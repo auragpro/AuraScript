@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "notes": [
+    "Calque d'effet calé sur la durée du calque sélectionné",
+    "Paroles : un texte par ligne, calé sur les marqueurs",
+    "Presets de texte (style ou fichier .ffx) avec + Preset et Appliquer",
+    "Système de mise à jour intégré"
+  ]
+}
