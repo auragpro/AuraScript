@@ -1,6 +1,10 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.5.1
-// nouveautes: Plus d'effet de lumière au survol ou au clic : les boutons restent sobres
+// version: 1.6.0
+// nouveautes: Nouvel onglet COURBE : éditeur Bézier visuel avec poignées à faire glisser
+// nouveautes: Courbes à 2 ou 3 keyframes, chaque transition réglable séparément
+// nouveautes: Modes Normal, Reverse et Aller-retour (reverse automatique, même avec plusieurs reverses)
+// nouveautes: Nouvel onglet BIBLIO : enregistrer, modifier, dupliquer, supprimer tes courbes
+// nouveautes: Import de tes presets Flow (bibliothèque auto, fichier ou dossier)
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -601,6 +605,1059 @@
     }
 
     // =====================================================================
+    // COURBES : moteur, bibliothèque, import Flow, éditeur
+    // =====================================================================
+
+    var CURVE_FILE = new File(Folder.userData.fsName + "/AuraScript/curves.json");
+    var MY_LIB = "Mes courbes";
+    var curveLib = []; // [{ id, name, lib, keys: 2|3, segs: [[x1,y1,x2,y2], ...], mid: [t, v], end: v }]
+
+    // ---------- Petits outils ----------
+
+    function clampNum(v, a, b) {
+        if (v < a) return a;
+        if (v > b) return b;
+        return v;
+    }
+
+    function round4(v) { return Math.round(v * 10000) / 10000; }
+
+    function newCurveId() {
+        return "c" + new Date().getTime() + "_" + Math.floor(Math.random() * 1000000);
+    }
+
+    function isNum(v) { return typeof v === "number" && !isNaN(v) && isFinite(v); }
+
+    function isNum4(a) {
+        if (!(a instanceof Array) || a.length !== 4) return false;
+        for (var i = 0; i < 4; i++) if (!isNum(Number(a[i])) || a[i] === null || a[i] === "") return false;
+        return true;
+    }
+
+    // Courbe « miroir » dans le temps (ease-out <-> ease-in) : c'est le reverse
+    function mirrorBez(b) {
+        return [1 - b[2], 1 - b[3], 1 - b[0], 1 - b[1]];
+    }
+
+    function cloneCurve(c) {
+        var segs = [];
+        for (var i = 0; i < c.segs.length; i++) segs.push([c.segs[i][0], c.segs[i][1], c.segs[i][2], c.segs[i][3]]);
+        return {
+            id: c.id, name: c.name, lib: c.lib, keys: c.keys, segs: segs,
+            mid: c.mid ? [c.mid[0], c.mid[1]] : [0.5, 1],
+            end: (c.end === undefined) ? 0 : c.end
+        };
+    }
+
+    function defaultCurve() {
+        return { id: null, name: "", lib: MY_LIB, keys: 2, segs: [[0.33, 0, 0.2, 1]], mid: [0.5, 1], end: 0 };
+    }
+
+    // Normalise une courbe venant d'un fichier (valeurs sûres)
+    function sanitizeCurve(c) {
+        var out = defaultCurve();
+        out.id = c.id ? String(c.id) : newCurveId();
+        out.name = c.name ? String(c.name) : "Courbe";
+        out.lib = c.lib ? String(c.lib) : MY_LIB;
+        out.keys = (Number(c.keys) === 3) ? 3 : 2;
+        out.segs = [];
+        var n = out.keys - 1;
+        for (var i = 0; i < n; i++) {
+            var s = (c.segs && isNum4(c.segs[i])) ? c.segs[i] : [0.33, 0, 0.2, 1];
+            out.segs.push([clampNum(Number(s[0]), 0, 1), clampNum(Number(s[1]), -3, 4),
+                clampNum(Number(s[2]), 0, 1), clampNum(Number(s[3]), -3, 4)]);
+        }
+        if (c.mid instanceof Array && c.mid.length === 2) {
+            out.mid = [clampNum(Number(c.mid[0]), 0.05, 0.95), clampNum(Number(c.mid[1]), -1, 2)];
+        }
+        if (isNum(Number(c.end))) out.end = clampNum(Number(c.end), -1, 2);
+        if (out.keys === 3) fixThreeKeyValues(out);
+        return out;
+    }
+
+    // Évite deux clés à la même valeur (la transition serait plate et impossible à éditer)
+    function fixThreeKeyValues(c) {
+        if (Math.abs(c.mid[1]) < 0.05) c.mid[1] = (c.mid[1] < 0) ? -0.05 : 0.05;
+        if (Math.abs(c.end - c.mid[1]) < 0.05) c.end = (c.end < c.mid[1]) ? c.mid[1] - 0.05 : c.mid[1] + 0.05;
+    }
+
+    // ---------- JSON (sans dépendance) ----------
+
+    function toJSON(v, ind) {
+        ind = ind || "";
+        var i, out, k;
+        if (v === null || v === undefined) return "null";
+        if (typeof v === "number") return isFinite(v) ? String(round4(v)) : "0";
+        if (typeof v === "boolean") return v ? "true" : "false";
+        if (typeof v === "string") {
+            return "\"" + v.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t") + "\"";
+        }
+        if (v instanceof Array) {
+            out = [];
+            for (i = 0; i < v.length; i++) out.push(toJSON(v[i], ind));
+            return "[" + out.join(", ") + "]";
+        }
+        out = [];
+        for (k in v) {
+            if (v.hasOwnProperty(k)) out.push(ind + "  " + toJSON(String(k)) + ": " + toJSON(v[k], ind + "  "));
+        }
+        return "{\n" + out.join(",\n") + "\n" + ind + "}";
+    }
+
+    // Lecture JSON sûre (vérifie qu'il n'y a que des données avant d'évaluer)
+    function parseJSONSafe(text) {
+        text = String(text);
+        if (text.charCodeAt(0) === 0xFEFF) text = text.substring(1);
+        var t = text.replace(/\\(?:["\\\/bfnrt]|u[0-9a-fA-F]{4})/g, "@")
+            .replace(/"[^"\\\n\r]*"|true|false|null|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?/g, "]")
+            .replace(/(?:^|:|,)(?:\s*\[)+/g, "");
+        if (/^[\],:{}\s]*$/.test(t)) return eval("(" + text + ")");
+        throw new Error("Ce fichier n'est pas un JSON valide.");
+    }
+
+    function readTextFile(f) {
+        f.encoding = "UTF-8";
+        if (!f.open("r")) return "";
+        var s = f.read();
+        f.close();
+        if (s.charCodeAt(0) === 0xFEFF) s = s.substring(1);
+        return s;
+    }
+
+    // ---------- Bibliothèque (fichier curves.json) ----------
+
+    function starterCurves() {
+        return [
+            sanitizeCurve({ name: "Snap", lib: MY_LIB, keys: 2, segs: [[0.9, 0, 0.1, 1]] }),
+            sanitizeCurve({ name: "Ease out fort", lib: MY_LIB, keys: 2, segs: [[0.16, 1, 0.3, 1]] }),
+            sanitizeCurve({ name: "Ease in-out", lib: MY_LIB, keys: 2, segs: [[0.65, 0, 0.35, 1]] }),
+            sanitizeCurve({ name: "Zoom aller-retour", lib: MY_LIB, keys: 3,
+                segs: [[0.2, 0.8, 0.3, 1], [0.7, 0, 0.8, 0.2]], mid: [0.5, 1], end: 0 })
+        ];
+    }
+
+    function loadCurveLib() {
+        curveLib = [];
+        try {
+            if (CURVE_FILE.exists) {
+                var data = parseJSONSafe(readTextFile(CURVE_FILE));
+                var arr = (data && data.curves instanceof Array) ? data.curves : data;
+                if (arr instanceof Array) {
+                    for (var i = 0; i < arr.length; i++) {
+                        if (arr[i]) curveLib.push(sanitizeCurve(arr[i]));
+                    }
+                }
+                return;
+            }
+        } catch (e) {}
+        curveLib = starterCurves();
+        saveCurveLib();
+    }
+
+    function saveCurveLib() {
+        try {
+            if (!CURVE_FILE.parent.exists) CURVE_FILE.parent.create();
+            CURVE_FILE.encoding = "UTF-8";
+            if (!CURVE_FILE.open("w")) return false;
+            CURVE_FILE.write(toJSON({ version: 1, curves: curveLib }));
+            CURVE_FILE.close();
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function libraryNames() {
+        var names = [MY_LIB];
+        for (var i = 0; i < curveLib.length; i++) {
+            var found = false;
+            for (var j = 0; j < names.length; j++) if (names[j] === curveLib[i].lib) { found = true; break; }
+            if (!found) names.push(curveLib[i].lib);
+        }
+        return names;
+    }
+
+    function findCurveIndex(id) {
+        for (var i = 0; i < curveLib.length; i++) if (curveLib[i].id === id) return i;
+        return -1;
+    }
+
+    // ---------- Import Flow (et formats proches) ----------
+
+    function bezFromString(s) {
+        var m = String(s).match(/(-?[\d.]+(?:e-?\d+)?)\s*,\s*(-?[\d.]+(?:e-?\d+)?)\s*,\s*(-?[\d.]+(?:e-?\d+)?)\s*,\s*(-?[\d.]+(?:e-?\d+)?)/i);
+        if (!m) return null;
+        return [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+    }
+
+    // Parcourt n'importe quelle structure et récupère les courbes cubic-bezier qu'elle contient
+    function extractCurves(node, out, nameHint, depth) {
+        if (depth > 8 || node === null || node === undefined) return;
+        var i, k, v;
+        if (node instanceof Array) {
+            if (isNum4(node)) { out.push({ name: nameHint, v: node }); return; }
+            for (i = 0; i < node.length; i++) extractCurves(node[i], out, null, depth + 1);
+            return;
+        }
+        if (typeof node === "string") {
+            if (/cubic-bezier/i.test(node)) {
+                v = bezFromString(node);
+                if (v) out.push({ name: nameHint, v: v });
+            }
+            return;
+        }
+        if (typeof node !== "object") return;
+
+        var nm = node.name || node.title || node.label || nameHint;
+        var cand = [node.value, node.curve, node.bezier, node.cubicBezier, node.cubic_bezier, node.points, node.values, node.ease, node.easing];
+        for (i = 0; i < cand.length; i++) {
+            v = cand[i];
+            if (v === undefined || v === null) continue;
+            if (typeof v === "string") v = bezFromString(v);
+            if (v && isNum4(v)) { out.push({ name: nm, v: v }); return; }
+        }
+        if (isNum(Number(node.x1)) && isNum(Number(node.y1)) && isNum(Number(node.x2)) && isNum(Number(node.y2))) {
+            out.push({ name: nm, v: [node.x1, node.y1, node.x2, node.y2] });
+            return;
+        }
+        for (k in node) {
+            if (!node.hasOwnProperty(k)) continue;
+            var hint = null;
+            if (isNum4(node[k])) hint = k; // format { "nom": [x1, y1, x2, y2] }
+            extractCurves(node[k], out, hint, depth + 1);
+        }
+    }
+
+    // Lit un texte (JSON Flow, ou texte avec des cubic-bezier) et renvoie [{name, v}]
+    function curvesFromText(text) {
+        var out = [];
+        try {
+            extractCurves(parseJSONSafe(text), out, null, 0);
+        } catch (e) {
+            out = [];
+        }
+        if (out.length) return out;
+        // Conversion de secours : on cherche les cubic-bezier(...) ou [a, b, c, d] dans le texte
+        var re = /(?:cubic-bezier\s*\(|\[)\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*[\)\]]/gi;
+        var m;
+        while ((m = re.exec(text)) !== null) out.push({ name: null, v: [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])] });
+        return out;
+    }
+
+    function fileBaseName(f) {
+        return decodeURI(f.name).replace(/\.[^.]+$/, "");
+    }
+
+    // Ajoute les courbes trouvées dans la bibliothèque « Flow · <nom> » (sans doublons)
+    function importCurvesInto(found, libName) {
+        var added = 0;
+        for (var i = 0; i < found.length; i++) {
+            var v = found[i].v;
+            var bez = [clampNum(Number(v[0]), 0, 1), clampNum(Number(v[1]), -3, 4), clampNum(Number(v[2]), 0, 1), clampNum(Number(v[3]), -3, 4)];
+            var name = found[i].name ? String(found[i].name) : ("Courbe " + (i + 1));
+            var dup = false;
+            for (var j = 0; j < curveLib.length; j++) {
+                var c = curveLib[j];
+                if (c.lib === libName && c.name === name && c.keys === 2 &&
+                    Math.abs(c.segs[0][0] - bez[0]) < 0.0005 && Math.abs(c.segs[0][1] - bez[1]) < 0.0005 &&
+                    Math.abs(c.segs[0][2] - bez[2]) < 0.0005 && Math.abs(c.segs[0][3] - bez[3]) < 0.0005) { dup = true; break; }
+            }
+            if (dup) continue;
+            curveLib.push(sanitizeCurve({ name: name, lib: libName, keys: 2, segs: [bez] }));
+            added++;
+        }
+        return added;
+    }
+
+    function importFlowFile(f) {
+        var found = curvesFromText(readTextFile(f));
+        return { found: found.length, added: importCurvesInto(found, "Flow · " + fileBaseName(f)) };
+    }
+
+    function collectFlowFiles(folder, depth, list) {
+        if (!folder.exists || depth > 3) return;
+        var items = folder.getFiles();
+        for (var i = 0; i < items.length; i++) {
+            if (items[i] instanceof Folder) collectFlowFiles(items[i], depth + 1, list);
+            else if (/\.(flow|json|txt)$/i.test(items[i].name)) list.push(items[i]);
+        }
+    }
+
+    function importFlowFolder(folder) {
+        var files = [];
+        collectFlowFiles(folder, 0, files);
+        var res = { files: 0, found: 0, added: 0 };
+        for (var i = 0; i < files.length; i++) {
+            var r = importFlowFile(files[i]);
+            if (r.found) res.files++;
+            res.found += r.found;
+            res.added += r.added;
+        }
+        return res;
+    }
+
+    function flowLibraryFolder() {
+        return new Folder(Folder.userData.fsName + "/aescripts/flow/libraries");
+    }
+
+    // ---------- Application sur les keyframes ----------
+
+    // Courbe à utiliser pour la transition n° i (entre la clé i et la clé i+1)
+    function bezForSegment(curve, mode, i) {
+        var n = curve.segs.length; // 1 ou 2
+        var reversed = false;
+        var local = i % n;
+        if (mode === "reverse") reversed = true;
+        if (mode === "alternate") reversed = (Math.floor(i / n) % 2) === 1;
+        if (!reversed) return curve.segs[local];
+        // reverse : on parcourt la courbe à l'envers (ordre des transitions inversé + miroir)
+        return mirrorBez(curve.segs[n - 1 - local]);
+    }
+
+    function midTimeFor(curve, mode, group) {
+        var t = curve.mid[0];
+        var reversed = false;
+        if (mode === "reverse") reversed = true;
+        if (mode === "alternate") reversed = (group % 2) === 1;
+        if (reversed) t = 1 - t;
+        return t;
+    }
+
+    function valueDelta(a, b) {
+        if (a instanceof Array) {
+            var d = [];
+            for (var i = 0; i < a.length; i++) d.push(b[i] - a[i]);
+            return d;
+        }
+        return [b - a];
+    }
+
+    function vecLength(d) {
+        var s = 0;
+        for (var i = 0; i < d.length; i++) s += d[i] * d[i];
+        return Math.sqrt(s);
+    }
+
+    // Convertit une transition cubic-bezier en easing After Effects entre les clés k1 et k2
+    function applyBezToSegment(p, k1, k2, bez) {
+        var t1 = p.keyTime(k1), t2 = p.keyTime(k2);
+        var dt = t2 - t1;
+        if (dt <= 0) return false;
+
+        var x1 = clampNum(bez[0], 0.001, 1), y1 = bez[1];
+        var x2 = clampNum(bez[2], 0, 0.999), y2 = bez[3];
+        var inflOut = clampNum(x1 * 100, 0.1, 100);
+        var inflIn = clampNum((1 - x2) * 100, 0.1, 100);
+        var slopeOut = y1 / x1;
+        var slopeIn = (1 - y2) / (1 - x2);
+
+        var d = valueDelta(p.keyValue(k1), p.keyValue(k2));
+        var outArr = [], inArr = [];
+        var nDims = p.keyOutTemporalEase(k1).length;
+
+        if (p.isSpatial) {
+            var dist = vecLength(d);
+            outArr.push(new KeyframeEase(Math.max(0, slopeOut * dist / dt), inflOut));
+            inArr.push(new KeyframeEase(Math.max(0, slopeIn * dist / dt), inflIn));
+        } else {
+            for (var i = 0; i < nDims; i++) {
+                var di = (i < d.length) ? d[i] : 0;
+                outArr.push(new KeyframeEase(slopeOut * di / dt, inflOut));
+                inArr.push(new KeyframeEase(slopeIn * di / dt, inflIn));
+            }
+        }
+
+        var BEZ = KeyframeInterpolationType.BEZIER;
+        p.setInterpolationTypeAtKey(k1, p.keyInInterpolationType(k1), BEZ);
+        p.setInterpolationTypeAtKey(k2, BEZ, p.keyOutInterpolationType(k2));
+        try { p.setTemporalContinuousAtKey(k1, false); p.setTemporalAutoBezierAtKey(k1, false); } catch (e) {}
+        try { p.setTemporalContinuousAtKey(k2, false); p.setTemporalAutoBezierAtKey(k2, false); } catch (e2) {}
+
+        p.setTemporalEaseAtKey(k1, p.keyInTemporalEase(k1), outArr);
+        p.setTemporalEaseAtKey(k2, inArr, p.keyOutTemporalEase(k2));
+        return true;
+    }
+
+    // Déplace la clé du milieu d'un groupe de 3 clés au bon moment
+    function moveMiddleKey(p, kA, kB, kC, tFrac) {
+        var tA = p.keyTime(kA), tC = p.keyTime(kC);
+        var newT = tA + tFrac * (tC - tA);
+        var fd = 1 / 1000;
+        try { fd = p.propertyGroup(p.propertyDepth).containingComp.frameDuration; } catch (e) {}
+        if (newT <= tA + fd || newT >= tC - fd) return;
+        if (Math.abs(newT - p.keyTime(kB)) < fd / 2) return;
+        var data = readKey(p, kB);
+        p.removeKey(kB);
+        writeKey(p, data, newT, 1);
+    }
+
+    function isEasable(p) {
+        try {
+            var t = p.propertyValueType;
+            if (t === PropertyValueType.NO_VALUE || t === PropertyValueType.MARKER ||
+                t === PropertyValueType.TEXT_DOCUMENT || t === PropertyValueType.SHAPE ||
+                t === PropertyValueType.CUSTOM_VALUE || t === PropertyValueType.LAYER_INDEX ||
+                t === PropertyValueType.MASK_INDEX) return false;
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    // Applique la courbe à toutes les keyframes sélectionnées de la composition
+    function applyCurveToSelection(comp, curve, mode, placeMid) {
+        var props = comp.selectedProperties;
+        var res = { props: 0, segs: 0, skipped: 0 };
+        for (var i = 0; i < props.length; i++) {
+            var p = props[i];
+            if (p.propertyType !== PropertyType.PROPERTY) continue;
+            var sel = p.selectedKeys;
+            if (!sel || sel.length < 2) continue;
+            if (!isEasable(p)) { res.skipped++; continue; }
+            var keys = [];
+            for (var j = 0; j < sel.length; j++) keys.push(sel[j]);
+            keys.sort(function (a, b) { return a - b; });
+
+            if (curve.keys === 3 && placeMid) {
+                for (var g = 0; g + 2 < keys.length; g += 2) {
+                    moveMiddleKey(p, keys[g], keys[g + 1], keys[g + 2], midTimeFor(curve, mode, g / 2));
+                }
+            }
+            for (var s = 0; s + 1 < keys.length; s++) {
+                if (applyBezToSegment(p, keys[s], keys[s + 1], bezForSegment(curve, mode, s))) res.segs++;
+            }
+            res.props++;
+        }
+        return res;
+    }
+
+    // ---------- Éditeur visuel ----------
+
+    var GRAPH = { w: 280, h: 150, pad: 12, ymin: -0.25, ymax: 1.25 };
+
+    function gx(x) { return GRAPH.pad + x * (GRAPH.w - 2 * GRAPH.pad); }
+    function gy(y) { return GRAPH.h - GRAPH.pad - (y - GRAPH.ymin) / (GRAPH.ymax - GRAPH.ymin) * (GRAPH.h - 2 * GRAPH.pad); }
+    function ux(px) { return (px - GRAPH.pad) / (GRAPH.w - 2 * GRAPH.pad); }
+    function uy(py) { return GRAPH.ymin + (GRAPH.h - GRAPH.pad - py) / (GRAPH.h - 2 * GRAPH.pad) * (GRAPH.ymax - GRAPH.ymin); }
+
+    // Points clés de la courbe en coordonnées graphe [x, y]
+    function curveAnchors(c) {
+        if (c.keys === 3) return [[0, 0], [c.mid[0], c.mid[1]], [1, c.end]];
+        return [[0, 0], [1, 1]];
+    }
+
+    // Poignées absolues de la transition s
+    function segHandles(c, s) {
+        var a = curveAnchors(c);
+        var A = a[s], B = a[s + 1], b = c.segs[s];
+        return [
+            [A[0] + b[0] * (B[0] - A[0]), A[1] + b[1] * (B[1] - A[1])],
+            [A[0] + b[2] * (B[0] - A[0]), A[1] + b[3] * (B[1] - A[1])]
+        ];
+    }
+
+    function cubicPt(p0, p1, p2, p3, t) {
+        var u = 1 - t;
+        var a = u * u * u, b = 3 * u * u * t, cc = 3 * u * t * t, d = t * t * t;
+        return [a * p0[0] + b * p1[0] + cc * p2[0] + d * p3[0], a * p0[1] + b * p1[1] + cc * p2[1] + d * p3[1]];
+    }
+
+    function drawCurvePath(g, c, pen, transform) {
+        var a = curveAnchors(c);
+        for (var s = 0; s < c.segs.length; s++) {
+            var h = segHandles(c, s);
+            g.newPath();
+            for (var i = 0; i <= 28; i++) {
+                var pt = cubicPt(a[s], h[0], h[1], a[s + 1], i / 28);
+                if (transform) pt = transform(pt);
+                if (i === 0) g.moveTo(gx(pt[0]), gy(pt[1]));
+                else g.lineTo(gx(pt[0]), gy(pt[1]));
+            }
+            g.strokePath(pen);
+        }
+    }
+
+    function drawSquare(g, x, y, r, v) {
+        g.newPath();
+        g.rectPath(Math.round(x - r), Math.round(y - r), 2 * r, 2 * r);
+        g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR, grey(v)));
+    }
+
+    function drawEditor(btn, st) {
+        var g = btn.graphics;
+        var c = st.curve;
+        var W = GRAPH.w, H = GRAPH.h;
+
+        g.newPath(); g.rectPath(0, 0, W, H);
+        g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR, grey(0.05)));
+        g.newPath(); g.rectPath(0.5, 0.5, W - 1, H - 1);
+        g.strokePath(g.newPen(g.PenType.SOLID_COLOR, grey(0.2), 1));
+
+        // grille
+        var faint = g.newPen(g.PenType.SOLID_COLOR, grey(0.12), 1);
+        var mid = g.newPen(g.PenType.SOLID_COLOR, grey(0.22), 1);
+        for (var q = 0; q <= 4; q++) {
+            g.newPath(); g.moveTo(gx(q / 4), gy(GRAPH.ymin)); g.lineTo(gx(q / 4), gy(GRAPH.ymax)); g.strokePath(faint);
+        }
+        g.newPath(); g.moveTo(gx(0), gy(0)); g.lineTo(gx(1), gy(0)); g.strokePath(mid);
+        g.newPath(); g.moveTo(gx(0), gy(1)); g.lineTo(gx(1), gy(1)); g.strokePath(mid);
+
+        // aperçu du reverse (fantôme gris)
+        if (st.mode === "reverse" || st.mode === "alternate") {
+            var ghost = g.newPen(g.PenType.SOLID_COLOR, grey(0.32), 1);
+            if (c.keys === 3) drawCurvePath(g, c, ghost, function (p) { return [1 - p[0], p[1]]; });
+            else drawCurvePath(g, c, ghost, function (p) { return [1 - p[0], 1 - p[1]]; });
+        }
+
+        // poignées
+        var a = curveAnchors(c);
+        var hp = g.newPen(g.PenType.SOLID_COLOR, grey(0.45), 1);
+        for (var s = 0; s < c.segs.length; s++) {
+            var h = segHandles(c, s);
+            g.newPath(); g.moveTo(gx(a[s][0]), gy(a[s][1])); g.lineTo(gx(h[0][0]), gy(h[0][1])); g.strokePath(hp);
+            g.newPath(); g.moveTo(gx(a[s + 1][0]), gy(a[s + 1][1])); g.lineTo(gx(h[1][0]), gy(h[1][1])); g.strokePath(hp);
+        }
+
+        // courbe
+        drawCurvePath(g, c, g.newPen(g.PenType.SOLID_COLOR, grey(0.95), 2), null);
+
+        // points
+        for (var s2 = 0; s2 < c.segs.length; s2++) {
+            var h2 = segHandles(c, s2);
+            drawSquare(g, gx(h2[0][0]), gy(h2[0][1]), 3, 0.8);
+            drawSquare(g, gx(h2[1][0]), gy(h2[1][1]), 3, 0.8);
+        }
+        for (var k = 0; k < a.length; k++) {
+            var movable = (c.keys === 3 && k > 0);
+            drawSquare(g, gx(a[k][0]), gy(a[k][1]), movable ? 5 : 4, movable ? 1 : 0.6);
+        }
+    }
+
+    // Liste des éléments déplaçables : { kind: "h1"|"h2"|"mid"|"end", seg, x, y }
+    function editorTargets(c) {
+        var t = [];
+        for (var s = 0; s < c.segs.length; s++) {
+            var h = segHandles(c, s);
+            t.push({ kind: "h1", seg: s, x: gx(h[0][0]), y: gy(h[0][1]) });
+            t.push({ kind: "h2", seg: s, x: gx(h[1][0]), y: gy(h[1][1]) });
+        }
+        if (c.keys === 3) {
+            t.push({ kind: "mid", seg: 0, x: gx(c.mid[0]), y: gy(c.mid[1]) });
+            t.push({ kind: "end", seg: 1, x: gx(1), y: gy(c.end) });
+        }
+        return t;
+    }
+
+    function dragTo(c, target, px, py) {
+        var X = ux(px), Y = clampNum(uy(py), GRAPH.ymin - 0.5, GRAPH.ymax + 0.5);
+        if (target.kind === "mid") {
+            c.mid[0] = clampNum(X, 0.05, 0.95);
+            c.mid[1] = clampNum(Y, -1, 2);
+            fixThreeKeyValues(c);
+            return;
+        }
+        if (target.kind === "end") {
+            c.end = clampNum(Y, -1, 2);
+            fixThreeKeyValues(c);
+            return;
+        }
+        var a = curveAnchors(c);
+        var A = a[target.seg], B = a[target.seg + 1];
+        var nx = clampNum((X - A[0]) / (B[0] - A[0]), 0, 1);
+        var dy = B[1] - A[1];
+        var ny = (Math.abs(dy) > 0.0001) ? (Y - A[1]) / dy : 0;
+        ny = clampNum(ny, -3, 4);
+        var b = c.segs[target.seg];
+        if (target.kind === "h1") { b[0] = round4(nx); b[1] = round4(ny); }
+        else { b[2] = round4(nx); b[3] = round4(ny); }
+    }
+
+    function bezToText(b) {
+        return [round4(b[0]), round4(b[1]), round4(b[2]), round4(b[3])].join(", ");
+    }
+
+    // ---------- Boutons à bascule (onglets, 2/3 clés, modes) ----------
+
+    // Dessine un bouton actif (blanc) ou inactif (noir) selon isActive()
+    function makeToggleDraw(isActive) {
+        return function () { drawToggle(this, isActive()); };
+    }
+
+    function drawToggle(btn, active) {
+        var g = btn.graphics;
+        var w = btn.size[0], h = btn.size[1];
+        var fillV = THEME.btn, borderV = THEME.border, inkV = THEME.label;
+        if (active) { fillV = 0.9; borderV = 0.9; inkV = 0.06; }
+        g.newPath(); g.rectPath(0, 0, w, h);
+        g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR, grey(fillV)));
+        g.newPath(); g.rectPath(0.5, 0.5, w - 1, h - 1);
+        g.strokePath(g.newPen(g.PenType.SOLID_COLOR, grey(borderV), 1));
+        var ink = g.newPen(g.PenType.SOLID_COLOR, grey(inkV), 1);
+        var font = safeFont(active ? "BOLD" : "REGULAR", 11);
+        var label = btn.text;
+        var m = font ? g.measureString(label, font) : g.measureString(label);
+        var x = Math.round((w - m[0]) / 2), y = Math.round((h - m[1]) / 2);
+        if (font) g.drawString(label, ink, x, y, font);
+        else g.drawString(label, ink, x, y);
+    }
+
+    function addToggle(parent, label, isActive, w, h) {
+        var b = parent.add("button", undefined, label);
+        b.preferredSize = [w, h || 24];
+        try { b.onDraw = makeToggleDraw(isActive); } catch (e) {}
+        return b;
+    }
+
+    // Force un élément à se redessiner
+    function repaint(el) {
+        try { el.hide(); el.show(); } catch (e) {}
+    }
+
+    // =====================================================================
+    // Page « Courbe »
+    // =====================================================================
+
+    function buildCurvePage(page, libPage, setStatus) {
+        loadCurveLib();
+
+        var st = {
+            curve: defaultCurve(),  // courbe en cours d'édition (copie)
+            mode: "normal",         // normal | reverse | alternate
+            libFilter: 0,           // index dans la liste des bibliothèques (0 = toutes)
+            listIds: [],            // ids affichés dans la liste
+            drag: null
+        };
+
+        // ---------- Bibliothèque (onglet BIBLIO) ----------
+        var sLib = addSection(libPage, "BIBLIOTHÈQUE");
+        var ddLib = sLib.add("dropdownlist", undefined, []);
+        ddLib.alignment = ["fill", "top"];
+        var lbCurves = sLib.add("listbox", undefined, []);
+        lbCurves.preferredSize = [280, 190];
+        var gLibBtns = sLib.add("group");
+        gLibBtns.orientation = "row";
+        gLibBtns.spacing = 4;
+        var btnNew = themeButton(gLibBtns.add("button", undefined, "Nouvelle"));
+        btnNew.preferredSize = [86, 24];
+        var btnDup = themeButton(gLibBtns.add("button", undefined, "Dupliquer"));
+        btnDup.preferredSize = [86, 24];
+        var btnDel = themeButton(gLibBtns.add("button", undefined, "Supprimer"));
+        btnDel.preferredSize = [86, 24];
+
+        // ---------- Éditeur (onglet COURBE) ----------
+        var sEd = page;
+        var gName = sEd.add("group");
+        gName.orientation = "row";
+        gName.alignChildren = ["fill", "center"];
+        gName.spacing = 4;
+        var ddQuick = gName.add("dropdownlist", undefined, []);
+        ddQuick.alignment = ["fill", "center"];
+        ddQuick.preferredSize.width = 170;
+        ddQuick.helpTip = "Choisis une courbe enregistrée";
+        var tKeys = gName.add("statictext", undefined, "Clés");
+        tKeys.alignment = ["right", "center"];
+        paintText(tKeys, THEME.label);
+        var btnK2 = addToggle(gName, "2", function () { return st.curve.keys === 2; }, 26);
+        btnK2.alignment = ["right", "center"];
+        var btnK3 = addToggle(gName, "3", function () { return st.curve.keys === 3; }, 26);
+        btnK3.alignment = ["right", "center"];
+
+        var canvas = sEd.add("button", undefined, "");
+        canvas.preferredSize = [GRAPH.w, GRAPH.h];
+        canvas.helpTip = "Fais glisser les poignées (petits carrés) et, en mode 3 clés, les clés blanches";
+        try { canvas.onDraw = function () { drawEditor(this, st); }; } catch (e) {}
+
+        var gSeg1 = sEd.add("group");
+        gSeg1.orientation = "row";
+        gSeg1.alignChildren = ["left", "center"];
+        gSeg1.spacing = 4;
+        var tSeg1 = gSeg1.add("statictext", undefined, "1");
+        paintText(tSeg1, THEME.label);
+        var etSeg1 = gSeg1.add("edittext", undefined, "");
+        etSeg1.preferredSize.width = 122;
+        etSeg1.helpTip = "Transition 1 : x1, y1, x2, y2 (format cubic-bezier, comme Flow)";
+        var tSeg2 = gSeg1.add("statictext", undefined, "2");
+        paintText(tSeg2, THEME.label);
+        var etSeg2 = gSeg1.add("edittext", undefined, "");
+        etSeg2.preferredSize.width = 122;
+        etSeg2.helpTip = "Transition 2 (courbes à 3 clés) : x1, y1, x2, y2";
+
+        var gEdBtns = sEd.add("group");
+        gEdBtns.orientation = "row";
+        gEdBtns.spacing = 4;
+        var btnFlip = themeButton(gEdBtns.add("button", undefined, "Inverser"));
+        btnFlip.preferredSize = [86, 24];
+        btnFlip.helpTip = "Transforme la courbe en sa version reverse (miroir dans le temps)";
+        var btnReset = themeButton(gEdBtns.add("button", undefined, "Réinitialiser"));
+        btnReset.preferredSize = [86, 24];
+        var btnSave = themeButton(gEdBtns.add("button", undefined, "Enregistrer"), "primary");
+        btnSave.preferredSize = [86, 24];
+
+        // ---------- Appliquer ----------
+        var sApp = addSection(page, "APPLIQUER");
+        sApp.spacing = 4;
+        var gMode = sApp.add("group");
+        gMode.orientation = "row";
+        gMode.spacing = 4;
+        var btnMNormal = addToggle(gMode, "Normal", function () { return st.mode === "normal"; }, 86);
+        btnMNormal.helpTip = "La courbe telle que tu l'as dessinée";
+        var btnMReverse = addToggle(gMode, "Reverse", function () { return st.mode === "reverse"; }, 86);
+        btnMReverse.helpTip = "La même courbe jouée à l'envers (ease-out devient ease-in)";
+        var btnMAlt = addToggle(gMode, "Aller-retour", function () { return st.mode === "alternate"; }, 86);
+        btnMAlt.helpTip = "Alterne Normal / Reverse à chaque transition : pratique avec plusieurs reverses";
+        var chkMid = sApp.add("checkbox", undefined, "Caler la clé du milieu (3 clés)");
+        chkMid.value = false;
+        chkMid.helpTip = "Déplace la keyframe du milieu au même endroit que sur la courbe";
+        paintText(chkMid, THEME.label);
+        var btnApplyCurve = themeButton(sApp.add("button", undefined, "Appliquer aux keyframes sélectionnées"), "primary");
+        btnApplyCurve.preferredSize.height = 28;
+
+        // ---------- Import Flow (onglet BIBLIO) ----------
+        var sImp = addSection(libPage, "IMPORT FLOW");
+        var gImp = sImp.add("group");
+        gImp.orientation = "row";
+        gImp.spacing = 4;
+        var btnImpAuto = themeButton(gImp.add("button", undefined, "Ma biblio Flow"));
+        btnImpAuto.preferredSize = [86, 24];
+        btnImpAuto.helpTip = "Importe automatiquement toutes tes bibliothèques Flow installées sur ce PC";
+        var btnImpFile = themeButton(gImp.add("button", undefined, "Fichier…"));
+        btnImpFile.preferredSize = [86, 24];
+        btnImpFile.helpTip = "Importe un fichier .flow ou .json";
+        var btnImpFolder = themeButton(gImp.add("button", undefined, "Dossier…"));
+        btnImpFolder.preferredSize = [86, 24];
+        btnImpFolder.helpTip = "Importe tous les fichiers .flow / .json d'un dossier";
+
+        // ---------- Logique ----------
+
+        function refreshEditorFields() {
+            etSeg1.text = bezToText(st.curve.segs[0]);
+            if (st.curve.keys === 3) {
+                etSeg2.text = bezToText(st.curve.segs[1]);
+                etSeg2.enabled = true;
+                tSeg2.enabled = true;
+            } else {
+                etSeg2.text = "";
+                etSeg2.enabled = false;
+                tSeg2.enabled = false;
+            }
+        }
+
+        function refreshAll() {
+            refreshEditorFields();
+            repaint(canvas);
+            repaint(btnK2); repaint(btnK3);
+            repaint(btnMNormal); repaint(btnMReverse); repaint(btnMAlt);
+        }
+
+        function refreshLibraries(selectName) {
+            var names = libraryNames();
+            ddLib.removeAll();
+            ddLib.add("item", "Toutes les courbes");
+            var sel = 0;
+            for (var i = 0; i < names.length; i++) {
+                ddLib.add("item", names[i]);
+                if (selectName && names[i] === selectName) sel = i + 1;
+            }
+            if (!selectName && st.libFilter < ddLib.items.length) sel = st.libFilter;
+            st.libFilter = sel;
+            ddLib.selection = sel;
+            refreshList(null);
+        }
+
+        function refreshList(selectId) {
+            var names = libraryNames();
+            var libName = null;
+            if (st.libFilter > 0) libName = names[st.libFilter - 1];
+            lbCurves.removeAll();
+            st.listIds = [];
+            var selIndex = -1;
+            for (var i = 0; i < curveLib.length; i++) {
+                var c = curveLib[i];
+                if (libName && c.lib !== libName) continue;
+                var label = c.name;
+                if (c.keys === 3) label += "   · 3 clés";
+                if (!libName && c.lib !== MY_LIB) label += "   · " + c.lib;
+                lbCurves.add("item", label);
+                st.listIds.push(c.id);
+                if (selectId && c.id === selectId) selIndex = st.listIds.length - 1;
+            }
+            if (selIndex >= 0) lbCurves.selection = selIndex;
+        }
+
+        function refreshQuick(selectId) {
+            ddQuick.removeAll();
+            st.quickIds = [];
+            var selIndex = -1;
+            var it = ddQuick.add("item", "— Nouvelle courbe —");
+            st.quickIds.push(null);
+            for (var i = 0; i < curveLib.length; i++) {
+                var c = curveLib[i];
+                var label = c.name;
+                if (c.keys === 3) label += "  · 3 clés";
+                if (c.lib !== MY_LIB) label += "  · " + c.lib;
+                ddQuick.add("item", label);
+                st.quickIds.push(c.id);
+                if (selectId && c.id === selectId) selIndex = st.quickIds.length - 1;
+            }
+            st.quickLock = true;
+            ddQuick.selection = (selIndex >= 0) ? selIndex : 0;
+            st.quickLock = false;
+        }
+
+        function loadIntoEditor(id) {
+            var idx = findCurveIndex(id);
+            if (idx < 0) return;
+            st.curve = cloneCurve(curveLib[idx]);
+            refreshAll();
+        }
+
+        function readFields() {
+            var b1 = bezFromString(etSeg1.text);
+            if (b1) st.curve.segs[0] = [clampNum(b1[0], 0, 1), clampNum(b1[1], -3, 4), clampNum(b1[2], 0, 1), clampNum(b1[3], -3, 4)];
+            if (st.curve.keys === 3) {
+                var b2 = bezFromString(etSeg2.text);
+                if (b2) st.curve.segs[1] = [clampNum(b2[0], 0, 1), clampNum(b2[1], -3, 4), clampNum(b2[2], 0, 1), clampNum(b2[3], -3, 4)];
+            }
+        }
+
+        function setKeys(n) {
+            if (st.curve.keys === n) return;
+            if (n === 3) {
+                st.curve.keys = 3;
+                st.curve.mid = [0.5, 1];
+                st.curve.end = 0;
+                st.curve.segs = [st.curve.segs[0], mirrorBez(st.curve.segs[0])];
+            } else {
+                st.curve.keys = 2;
+                st.curve.segs = [st.curve.segs[0]];
+            }
+            refreshAll();
+        }
+
+        function setMode(m) {
+            st.mode = m;
+            refreshAll();
+        }
+
+        ddLib.onChange = function () {
+            if (!ddLib.selection) return;
+            st.libFilter = ddLib.selection.index;
+            refreshList(st.curve.id);
+        };
+
+        lbCurves.onChange = function () {
+            if (!lbCurves.selection) return;
+            var id = st.listIds[lbCurves.selection.index];
+            loadIntoEditor(id);
+            refreshQuick(id);
+        };
+
+        ddQuick.onChange = function () {
+            if (st.quickLock || !ddQuick.selection) return;
+            var id = st.quickIds[ddQuick.selection.index];
+            if (id) {
+                loadIntoEditor(id);
+                setStatus("Courbe « " + st.curve.name + " » chargée.");
+            } else {
+                st.curve = defaultCurve();
+                refreshAll();
+            }
+        };
+
+        etSeg1.onChange = function () { readFields(); refreshAll(); };
+        etSeg2.onChange = function () { readFields(); refreshAll(); };
+
+        btnK2.onClick = function () { setKeys(2); };
+        btnK3.onClick = function () { setKeys(3); };
+        btnMNormal.onClick = function () { setMode("normal"); };
+        btnMReverse.onClick = function () { setMode("reverse"); };
+        btnMAlt.onClick = function () { setMode("alternate"); };
+
+        btnNew.onClick = function () {
+            st.curve = defaultCurve();
+            lbCurves.selection = null;
+            refreshQuick(null);
+            refreshAll();
+            setStatus("Nouvelle courbe : dessine-la dans COURBE puis clique sur Enregistrer.");
+        };
+
+        btnDup.onClick = function () {
+            readFields();
+            var c = cloneCurve(st.curve);
+            c.id = null;
+            c.name = (c.name ? c.name : "Courbe") + " copie";
+            c.lib = MY_LIB;
+            st.curve = c;
+            lbCurves.selection = null;
+            refreshQuick(null);
+            refreshAll();
+            setStatus("Copie prête : clique sur Enregistrer (onglet COURBE) pour la garder.");
+        };
+
+        btnDel.onClick = function () {
+            if (!st.curve.id || findCurveIndex(st.curve.id) < 0) { alert("Choisis d'abord une courbe dans la liste."); return; }
+            if (!confirm("Supprimer la courbe « " + st.curve.name + " » ?")) return;
+            curveLib.splice(findCurveIndex(st.curve.id), 1);
+            saveCurveLib();
+            st.curve = defaultCurve();
+            refreshLibraries(null);
+            refreshQuick(null);
+            refreshAll();
+            setStatus("Courbe supprimée.");
+        };
+
+        btnFlip.onClick = function () {
+            readFields();
+            var c = st.curve;
+            if (c.keys === 2) {
+                c.segs = [mirrorBez(c.segs[0])];
+            } else {
+                var a = mirrorBez(c.segs[1]), b = mirrorBez(c.segs[0]);
+                var ev = c.end;
+                c.segs = [a, b];
+                c.mid = [1 - c.mid[0], c.mid[1] - ev];
+                c.end = -ev;
+                fixThreeKeyValues(c);
+            }
+            refreshAll();
+        };
+
+        btnReset.onClick = function () {
+            var keep = st.curve;
+            st.curve = defaultCurve();
+            st.curve.id = keep.id;
+            st.curve.name = keep.name;
+            st.curve.lib = keep.lib;
+            if (keep.keys === 3) {
+                st.curve.keys = 3;
+                st.curve.segs = [[0.33, 0, 0.2, 1], [0.8, 0, 0.67, 1]];
+            }
+            refreshAll();
+        };
+
+        btnSave.onClick = function () {
+            readFields();
+            var nm = prompt("Nom de la courbe :", st.curve.name || "", "Enregistrer la courbe");
+            if (nm === null) return;
+            nm = trim(nm);
+            if (!nm) { alert("Donne un nom à ta courbe."); return; }
+            st.curve.name = nm;
+            var idx = st.curve.id ? findCurveIndex(st.curve.id) : -1;
+            var saved = cloneCurve(st.curve);
+            if (idx >= 0) {
+                curveLib[idx] = saved;
+            } else {
+                saved.id = newCurveId();
+                if (!saved.lib) saved.lib = MY_LIB;
+                curveLib.push(saved);
+                st.curve.id = saved.id;
+            }
+            if (!saveCurveLib()) {
+                alert("Impossible d'enregistrer la bibliothèque.\n\nVérifie l'option :\nPréférences > Scripts et expressions >\n« Autoriser les scripts à écrire des fichiers et à accéder au réseau »");
+                return;
+            }
+            refreshLibraries(null);
+            refreshList(saved.id);
+            refreshQuick(saved.id);
+            setStatus("Courbe « " + saved.name + " » enregistrée dans " + saved.lib + ".");
+        };
+
+        btnApplyCurve.onClick = function () {
+            readFields();
+            var comp = getActiveComp();
+            if (!comp) { alert("Ouvre d'abord une composition."); return; }
+            app.beginUndoGroup("Courbe : " + (st.curve.name || "sans nom"));
+            try {
+                var res = applyCurveToSelection(comp, st.curve, st.mode, chkMid.value);
+                if (!res.segs) {
+                    alert("Sélectionne au moins 2 keyframes sur une propriété (dans la timeline).");
+                } else {
+                    var modeName = "Normal";
+                    if (st.mode === "reverse") modeName = "Reverse";
+                    if (st.mode === "alternate") modeName = "Aller-retour";
+                    setStatus("Courbe appliquée (" + modeName + ") : " + res.segs + " transition(s) sur " + res.props + " propriété(s).");
+                }
+            } catch (e) {
+                alert("Erreur : " + e.message);
+            } finally {
+                app.endUndoGroup();
+            }
+        };
+
+        function afterImport(added, found, libHint) {
+            if (!found) { alert("Aucune courbe trouvée."); return; }
+            saveCurveLib();
+            refreshLibraries(libHint);
+            refreshQuick(st.curve.id);
+            setStatus(added + " courbe(s) importée(s)" + ((found > added) ? " (" + (found - added) + " déjà présente(s))" : "") + ".");
+        }
+
+        btnImpAuto.onClick = function () {
+            var folder = flowLibraryFolder();
+            if (!folder.exists) {
+                alert("Aucune bibliothèque Flow trouvée sur ce PC.\nUtilise « Fichier… » ou « Dossier… » pour choisir tes presets.");
+                return;
+            }
+            var r = importFlowFolder(folder);
+            afterImport(r.added, r.found, null);
+        };
+
+        btnImpFile.onClick = function () {
+            var filter = isWindows()
+                ? "Bibliothèques de courbes:*.flow;*.json;*.txt,Tous les fichiers:*.*"
+                : function (f) { return (f instanceof Folder) || /\.(flow|json|txt)$/i.test(f.name); };
+            var f = File.openDialog("Choisis une bibliothèque Flow (.flow / .json)", filter, false);
+            if (!f) return;
+            var r = importFlowFile(f);
+            afterImport(r.added, r.found, "Flow · " + fileBaseName(f));
+        };
+
+        btnImpFolder.onClick = function () {
+            var folder = Folder.selectDialog("Choisis le dossier qui contient tes presets Flow");
+            if (!folder) return;
+            var r = importFlowFolder(folder);
+            afterImport(r.added, r.found, null);
+        };
+
+        // ---------- Glisser les poignées ----------
+        function hit(ev) {
+            var targets = editorTargets(st.curve);
+            var best = null, bestD = 10;
+            for (var i = 0; i < targets.length; i++) {
+                var dx = targets[i].x - ev.clientX, dy = targets[i].y - ev.clientY;
+                var d = Math.sqrt(dx * dx + dy * dy);
+                if (d < bestD) { bestD = d; best = targets[i]; }
+            }
+            return best;
+        }
+
+        try {
+            canvas.addEventListener("mousedown", function (ev) {
+                st.drag = hit(ev);
+            });
+            canvas.addEventListener("mousemove", function (ev) {
+                if (!st.drag) return;
+                dragTo(st.curve, st.drag, ev.clientX, ev.clientY);
+                refreshEditorFields();
+                repaint(canvas);
+            });
+            canvas.addEventListener("mouseup", function (ev) {
+                if (st.drag) {
+                    dragTo(st.curve, st.drag, ev.clientX, ev.clientY);
+                    st.drag = null;
+                    refreshEditorFields();
+                    repaint(canvas);
+                }
+            });
+            canvas.addEventListener("mouseout", function () { st.drag = null; });
+        } catch (e) {}
+
+        refreshLibraries(null);
+        refreshQuick(null);
+        refreshEditorFields();
+    }
+
+    // =====================================================================
     // Interface
     // =====================================================================
 
@@ -624,8 +1681,40 @@
             paintTree(host.parent, host);
         }
 
+        // ---------- Onglets : OUTILS / COURBE / BIBLIO ----------
+        var ui = { page: "tools" };
+        var gTabs = win.add("group");
+        gTabs.orientation = "row";
+        gTabs.alignChildren = ["fill", "center"];
+        gTabs.spacing = 4;
+        var tabTools = addToggle(gTabs, "OUTILS", function () { return ui.page === "tools"; }, 90, 26);
+        var tabCurve = addToggle(gTabs, "COURBE", function () { return ui.page === "curve"; }, 90, 26);
+        var tabLib = addToggle(gTabs, "BIBLIO", function () { return ui.page === "lib"; }, 90, 26);
+
+        var status = win.add("statictext", undefined, "", { truncate: "end" });
+        status.alignment = ["fill", "top"];
+        paintText(status, THEME.label);
+
+        var pages = win.add("group");
+        pages.orientation = "stack";
+        pages.alignChildren = ["fill", "top"];
+        var pageTools = pages.add("group");
+        pageTools.orientation = "column";
+        pageTools.alignChildren = ["fill", "top"];
+        pageTools.spacing = 10;
+        var pageCurve = pages.add("group");
+        pageCurve.orientation = "column";
+        pageCurve.alignChildren = ["fill", "top"];
+        pageCurve.spacing = 6;
+        pageCurve.visible = false;
+        var pageLib = pages.add("group");
+        pageLib.orientation = "column";
+        pageLib.alignChildren = ["fill", "top"];
+        pageLib.spacing = 8;
+        pageLib.visible = false;
+
         // ---------- Alignement ----------
-        var sAli = addSection(win, "ALIGNEMENT");
+        var sAli = addSection(pageTools, "ALIGNEMENT");
         var gAli = sAli.add("group");
         gAli.orientation = "row";
         gAli.alignChildren = ["left", "top"];
@@ -666,7 +1755,7 @@
         btnAdj.helpTip = "Crée un calque d'effet au-dessus du/des calque(s) sélectionné(s), avec la même durée";
 
         // ---------- Lyrics ----------
-        var pLyr = addSection(win, "LYRICS");
+        var pLyr = addSection(pageTools, "LYRICS");
         var tLyr = pLyr.add("statictext", undefined, "Un mot = un texte, calé sur un marqueur");
         paintText(tLyr, THEME.label);
         var etLyrics = pLyr.add("edittext", undefined, "", { multiline: true, scrolling: true, wantReturn: true });
@@ -689,7 +1778,7 @@
         btnLyrics.preferredSize.height = 28;
 
         // ---------- Presets ----------
-        var pPre = addSection(win, "PRESETS  .FFX");
+        var pPre = addSection(pageTools, "PRESETS  .FFX");
         var gPre = pPre.add("group");
         gPre.orientation = "row";
         gPre.alignChildren = ["fill", "center"];
@@ -709,9 +1798,35 @@
         btnApply.preferredSize.height = 26;
         btnApply.helpTip = "Le preset démarre au début du texte et son animation est étirée jusqu'à la fin";
 
-        var status = win.add("statictext", undefined, "", { multiline: true });
-        status.preferredSize.height = 30;
-        paintText(status, THEME.label);
+        // ---------- Pages Courbe / Biblio ----------
+        function setStatus(t) { status.text = t; }
+        try {
+            buildCurvePage(pageCurve, pageLib, setStatus);
+        } catch (eCurve) {
+            pageCurve.add("statictext", undefined, "Erreur page Courbe : " + eCurve.message + " (ligne " + eCurve.line + ")");
+        }
+
+        function relayoutAll() {
+            try {
+                var w = win.window ? win.window : win;
+                w.layout.layout(true);
+                w.layout.resize();
+            } catch (e) {}
+        }
+
+        function showPage(p) {
+            ui.page = p;
+            pageTools.visible = (p === "tools");
+            pageCurve.visible = (p === "curve");
+            pageLib.visible = (p === "lib");
+            repaint(tabTools);
+            repaint(tabCurve);
+            repaint(tabLib);
+            relayoutAll();
+        }
+        tabTools.onClick = function () { showPage("tools"); };
+        tabCurve.onClick = function () { showPage("curve"); };
+        tabLib.onClick = function () { showPage("lib"); };
 
         // ---------- Logique ----------
 
