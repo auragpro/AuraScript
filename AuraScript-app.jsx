@@ -1,8 +1,6 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.6.4
-// nouveautes: Boutons Precomp et Déprecomp dans Alignement
-// nouveautes: Nouvel onglet INTRO avec Lyrics et les presets .ffx
-// nouveautes: Taille des lyrics par défaut : 150
+// version: 1.6.5
+// nouveautes: Déprecomp ne coupe plus rien : le contenu du precomp ressort exactement comme il est dedans
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -447,19 +445,9 @@
                 if (par && map[par.index]) created[j].dst.setParentWithJump(map[par.index]);
             } catch (e) {}
         }
-        // on garde seulement ce qui était visible dans le precomp
-        var kept = 0;
-        for (var k = 0; k < created.length; k++) {
-            var d = created[k].dst;
-            if (d.outPoint <= layer.inPoint || d.inPoint >= layer.outPoint) { d.remove(); continue; }
-            try {
-                if (d.inPoint < layer.inPoint) d.inPoint = layer.inPoint;
-                if (d.outPoint > layer.outPoint) d.outPoint = layer.outPoint;
-            } catch (e2) {}
-            kept++;
-        }
+        // le contenu ressort tel quel (aucune coupe)
         layer.remove();
-        return kept;
+        return created.length;
     }
 
     function alignLayers(comp, h, v) {
