@@ -1,10 +1,8 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.6.0
+// version: 1.6.1
+// nouveautes: Correction : la poignée de la courbe se lâche bien quand tu relâches la souris
 // nouveautes: Nouvel onglet COURBE : éditeur Bézier visuel avec poignées à faire glisser
-// nouveautes: Courbes à 2 ou 3 keyframes, chaque transition réglable séparément
-// nouveautes: Modes Normal, Reverse et Aller-retour (reverse automatique, même avec plusieurs reverses)
-// nouveautes: Nouvel onglet BIBLIO : enregistrer, modifier, dupliquer, supprimer tes courbes
-// nouveautes: Import de tes presets Flow (bibliothèque auto, fichier ou dossier)
+// nouveautes: Modes Normal, Reverse et Aller-retour, bibliothèque de courbes et import Flow (onglet BIBLIO)
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -1631,26 +1629,43 @@
             return best;
         }
 
+        // Redessine l'éditeur SANS le masquer : le masquer pendant un glisser
+        // fait perdre le relâchement de la souris (la poignée restait collée au pointeur)
+        function softRepaint() {
+            try {
+                if (canvas.text === "") canvas.text = " ";
+                else canvas.text = "";
+            } catch (e) {
+                repaint(canvas);
+            }
+        }
+
+        function endDrag() {
+            if (!st.drag) return;
+            st.drag = null;
+            refreshEditorFields();
+            softRepaint();
+        }
+
         try {
             canvas.addEventListener("mousedown", function (ev) {
+                if (st.drag) { endDrag(); return; } // sécurité : un clic lâche toujours la poignée
                 st.drag = hit(ev);
             });
             canvas.addEventListener("mousemove", function (ev) {
                 if (!st.drag) return;
                 dragTo(st.curve, st.drag, ev.clientX, ev.clientY);
                 refreshEditorFields();
-                repaint(canvas);
+                softRepaint();
             });
             canvas.addEventListener("mouseup", function (ev) {
-                if (st.drag) {
-                    dragTo(st.curve, st.drag, ev.clientX, ev.clientY);
-                    st.drag = null;
-                    refreshEditorFields();
-                    repaint(canvas);
-                }
+                if (!st.drag) return;
+                dragTo(st.curve, st.drag, ev.clientX, ev.clientY);
+                endDrag();
             });
-            canvas.addEventListener("mouseout", function () { st.drag = null; });
+            canvas.addEventListener("mouseout", function () { endDrag(); });
         } catch (e) {}
+        canvas.onClick = function () { endDrag(); };
 
         refreshLibraries(null);
         refreshQuick(null);
