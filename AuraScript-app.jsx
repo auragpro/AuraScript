@@ -1,7 +1,8 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.6.3
-// nouveautes: Bibliothèque en vignettes : chaque courbe enregistrée s'affiche en mini-aperçu, comme dans Flow
-// nouveautes: Clique sur une vignette pour charger la courbe, flèches < > pour changer de page
+// version: 1.6.4
+// nouveautes: Boutons Precomp et Déprecomp dans Alignement
+// nouveautes: Nouvel onglet INTRO avec Lyrics et les presets .ffx
+// nouveautes: Taille des lyrics par défaut : 150
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -373,6 +374,94 @@
     }
 
     // h : 0 gauche, 1 centre, 2 droite — v : 0 haut, 1 milieu, 2 bas
+    // ---------- Precomp / Déprecomp ----------
+
+    function uniqueCompName(base) {
+        var name = base, n = 1;
+        for (;;) {
+            var used = false;
+            for (var i = 1; i <= app.project.numItems; i++) {
+                if (app.project.item(i).name === name) { used = true; break; }
+            }
+            if (!used) return name;
+            n++;
+            name = base + " " + n;
+        }
+    }
+
+    // Pré-compose les calques sélectionnés (comme Calque > Pré-composer, sans la fenêtre)
+    function precomposeSelected(comp) {
+        var sel = comp.selectedLayers;
+        if (!sel.length) return null;
+        var idx = [], minIn = null, maxOut = null;
+        for (var i = 0; i < sel.length; i++) {
+            idx.push(sel[i].index);
+            if (minIn === null || sel[i].inPoint < minIn) minIn = sel[i].inPoint;
+            if (maxOut === null || sel[i].outPoint > maxOut) maxOut = sel[i].outPoint;
+        }
+        idx.sort(function (a, b) { return a - b; });
+        var base = "Precomp";
+        if (sel.length === 1) base = sel[0].name + " precomp";
+        var newComp = comp.layers.precompose(idx, uniqueCompName(base), true);
+        var layer = comp.layer(idx[0]);
+        try {
+            if (layer.source === newComp) {
+                layer.inPoint = minIn;
+                layer.outPoint = maxOut;
+            }
+        } catch (e) {}
+        return newComp;
+    }
+
+    function hasLayerExtras(layer) {
+        try {
+            var fx = layer.property("ADBE Effect Parade");
+            if (fx && fx.numProperties > 0) return true;
+            var tr = layer.property("ADBE Transform Group");
+            for (var i = 1; i <= tr.numProperties; i++) {
+                if (tr.property(i).numKeys > 0) return true;
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    // Remet le contenu d'un precomp dans la composition, à sa place
+    function uncompose(comp, layer) {
+        var src = layer.source;
+        var off = layer.startTime;
+        var map = {};
+        var created = [];
+        for (var i = 1; i <= src.numLayers; i++) {
+            var L = src.layer(i);
+            L.copyToComp(comp);
+            var nl = comp.layer(1);
+            nl.startTime = nl.startTime + off;
+            nl.moveBefore(layer);
+            map[L.index] = nl;
+            created.push({ src: L, dst: nl });
+        }
+        // parentés internes au precomp
+        for (var j = 0; j < created.length; j++) {
+            try {
+                var par = created[j].src.parent;
+                if (par && map[par.index]) created[j].dst.setParentWithJump(map[par.index]);
+            } catch (e) {}
+        }
+        // on garde seulement ce qui était visible dans le precomp
+        var kept = 0;
+        for (var k = 0; k < created.length; k++) {
+            var d = created[k].dst;
+            if (d.outPoint <= layer.inPoint || d.inPoint >= layer.outPoint) { d.remove(); continue; }
+            try {
+                if (d.inPoint < layer.inPoint) d.inPoint = layer.inPoint;
+                if (d.outPoint > layer.outPoint) d.outPoint = layer.outPoint;
+            } catch (e2) {}
+            kept++;
+        }
+        layer.remove();
+        return kept;
+    }
+
     function alignLayers(comp, h, v) {
         h = Number(h);
         v = Number(v);
@@ -1725,8 +1814,9 @@
         gTabs.orientation = "row";
         gTabs.alignChildren = ["fill", "center"];
         gTabs.spacing = 4;
-        var tabTools = addToggle(gTabs, "OUTILS", function () { return ui.page === "tools"; }, 138, 26);
-        var tabCurve = addToggle(gTabs, "COURBE", function () { return ui.page === "curve"; }, 138, 26);
+        var tabTools = addToggle(gTabs, "OUTILS", function () { return ui.page === "tools"; }, 90, 26);
+        var tabIntro = addToggle(gTabs, "INTRO", function () { return ui.page === "intro"; }, 90, 26);
+        var tabCurve = addToggle(gTabs, "COURBE", function () { return ui.page === "curve"; }, 90, 26);
 
         var status = win.add("statictext", undefined, "", { truncate: "end" });
         status.alignment = ["fill", "top"];
@@ -1739,6 +1829,11 @@
         pageTools.orientation = "column";
         pageTools.alignChildren = ["fill", "top"];
         pageTools.spacing = 10;
+        var pageIntro = pages.add("group");
+        pageIntro.orientation = "column";
+        pageIntro.alignChildren = ["fill", "top"];
+        pageIntro.spacing = 10;
+        pageIntro.visible = false;
         var pageCurve = pages.add("group");
         pageCurve.orientation = "column";
         pageCurve.alignChildren = ["fill", "top"];
@@ -1786,8 +1881,19 @@
         btnAdj.preferredSize = [130, 26];
         btnAdj.helpTip = "Crée un calque d'effet au-dessus du/des calque(s) sélectionné(s), avec la même durée";
 
+        var gComp = sAli.add("group");
+        gComp.orientation = "row";
+        gComp.alignChildren = ["fill", "center"];
+        gComp.spacing = 4;
+        var btnPrecomp = themeButton(gComp.add("button", undefined, "Precomp"));
+        btnPrecomp.preferredSize = [112, 26];
+        btnPrecomp.helpTip = "Pré-compose les calques sélectionnés (même durée qu'eux)";
+        var btnUncomp = themeButton(gComp.add("button", undefined, "Déprecomp"));
+        btnUncomp.preferredSize = [112, 26];
+        btnUncomp.helpTip = "Ressort le contenu du precomp sélectionné dans la composition";
+
         // ---------- Lyrics ----------
-        var pLyr = addSection(pageTools, "LYRICS");
+        var pLyr = addSection(pageIntro, "LYRICS");
         var tLyr = pLyr.add("statictext", undefined, "Un mot = un texte, calé sur un marqueur");
         paintText(tLyr, THEME.label);
         var etLyrics = pLyr.add("edittext", undefined, "", { multiline: true, scrolling: true, wantReturn: true });
@@ -1799,7 +1905,7 @@
         gOpt.spacing = 6;
         var tSize = gOpt.add("statictext", undefined, "Taille");
         paintText(tSize, THEME.label);
-        var etSize = gOpt.add("edittext", undefined, "70");
+        var etSize = gOpt.add("edittext", undefined, "150");
         etSize.characters = 4;
         var chkLyrPreset = gOpt.add("checkbox", undefined, "Avec le preset");
         chkLyrPreset.value = false;
@@ -1810,7 +1916,7 @@
         btnLyrics.preferredSize.height = 28;
 
         // ---------- Presets ----------
-        var pPre = addSection(pageTools, "PRESETS  .FFX");
+        var pPre = addSection(pageIntro, "PRESETS  .FFX");
         var gPre = pPre.add("group");
         gPre.orientation = "row";
         gPre.alignChildren = ["fill", "center"];
@@ -1849,12 +1955,15 @@
         function showPage(p) {
             ui.page = p;
             pageTools.visible = (p === "tools");
+            pageIntro.visible = (p === "intro");
             pageCurve.visible = (p === "curve");
             repaint(tabTools);
+            repaint(tabIntro);
             repaint(tabCurve);
             relayoutAll();
         }
         tabTools.onClick = function () { showPage("tools"); };
+        tabIntro.onClick = function () { showPage("intro"); };
         tabCurve.onClick = function () { showPage("curve"); };
 
         // ---------- Logique ----------
@@ -1901,6 +2010,45 @@
         btnNull.onClick = function () { onSpanClick("null"); };
         btnText.onClick = function () { onSpanClick("text"); };
 
+        btnPrecomp.onClick = function () {
+            var comp = getActiveComp();
+            if (!comp) { alert("Ouvre d'abord une composition."); return; }
+            if (!comp.selectedLayers.length) { alert("Sélectionne d'abord un ou plusieurs calques."); return; }
+            app.beginUndoGroup("Precomp");
+            try {
+                var nc = precomposeSelected(comp);
+                if (nc) status.text = "Precomp « " + nc.name + " » créé.";
+            } catch (e) {
+                alert("Erreur : " + e.message);
+            } finally {
+                app.endUndoGroup();
+            }
+        };
+
+        btnUncomp.onClick = function () {
+            var comp = getActiveComp();
+            if (!comp) { alert("Ouvre d'abord une composition."); return; }
+            var sel = comp.selectedLayers;
+            var targets = [];
+            for (var i = 0; i < sel.length; i++) {
+                if (sel[i].source && sel[i].source instanceof CompItem) targets.push(sel[i]);
+            }
+            if (!targets.length) { alert("Sélectionne un calque precomp dans la timeline."); return; }
+            var extras = false;
+            for (var j = 0; j < targets.length; j++) if (hasLayerExtras(targets[j])) extras = true;
+            if (extras && !confirm("Les effets et animations posés sur le precomp lui-même seront perdus. Continuer ?")) return;
+            app.beginUndoGroup("Déprecomp");
+            try {
+                var total = 0;
+                for (var k = 0; k < targets.length; k++) total += uncompose(comp, targets[k]);
+                status.text = "Déprecomp : " + total + " calque(s) remis dans la composition.";
+            } catch (e) {
+                alert("Erreur : " + e.message);
+            } finally {
+                app.endUndoGroup();
+            }
+        };
+
         // Retrouve quel carré a été cliqué grâce à sa place dans la liste (index = v * 3 + h)
         function onAlignClick() {
             var idx = -1;
@@ -1933,7 +2081,7 @@
             var comp = getActiveComp();
             if (!comp) { alert("Ouvre d'abord une composition."); return; }
             var size = parseFloat(etSize.text);
-            if (isNaN(size) || size <= 0) size = 70;
+            if (isNaN(size) || size <= 0) size = 150;
             var preset = chkLyrPreset.value ? selectedPreset() : null;
             if (chkLyrPreset.value && !preset) { alert("Aucun preset : ajoute un fichier .ffx avec « + Preset »."); return; }
 
