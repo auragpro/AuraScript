@@ -1,6 +1,6 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.6.6
-// nouveautes: Déprecomp : les calques ressortent exactement au même endroit dans la timeline, sans être coupés ni déplacés
+// version: 1.6.7
+// nouveautes: Correction Déprecomp : il ne touche plus aux autres calques de la timeline, seul le contenu du precomp ressort, au même endroit
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -430,6 +430,20 @@
         try { l.outPoint = tOut; } catch (e3) {}
     }
 
+    function layerIdSet(comp) {
+        var set = {};
+        for (var i = 1; i <= comp.numLayers; i++) set[comp.layer(i).id] = true;
+        return set;
+    }
+
+    // Retrouve le calque qui vient d'être ajouté (celui dont l'id n'existait pas avant)
+    function findAddedLayer(comp, before) {
+        for (var i = 1; i <= comp.numLayers; i++) {
+            if (!before[comp.layer(i).id]) return comp.layer(i);
+        }
+        return null;
+    }
+
     // Remet le contenu d'un precomp dans la composition, à sa place
     function uncompose(comp, layer) {
         var src = layer.source;
@@ -440,8 +454,10 @@
         var created = [];
         for (var i = 1; i <= src.numLayers; i++) {
             var L = src.layer(i);
+            var before = layerIdSet(comp);
             L.copyToComp(comp);
-            var nl = comp.layer(1);
+            var nl = findAddedLayer(comp, before);
+            if (!nl) throw new Error("impossible de retrouver le calque copié « " + L.name + " »");
             // on recalcule les temps depuis le calque d'origine (copyToComp ne les garde pas toujours)
             try { if (k !== 1) nl.stretch = L.stretch * k; } catch (eS2) {}
             nl.startTime = off + L.startTime * k;
