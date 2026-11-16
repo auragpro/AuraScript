@@ -1,5 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.1.0
+// version: 1.2.0
+// nouveautes: Nouvelle grille d'alignement (9 carrés) : place les calques sélectionnés au centre, sur un côté ou dans un coin
+// nouveautes: Marge réglable pour l'alignement sur les bords
 // nouveautes: Le calque d'effet se place toujours juste au-dessus du calque sélectionné
 // nouveautes: Les paroles sont toujours centrées au milieu de l'image
 // nouveautes: Presets de texte : « + Preset » ajoute directement tes fichiers .ffx
@@ -236,6 +238,130 @@
     }
 
     // =====================================================================
+    // Alignement (grille 3 x 3)
+    // =====================================================================
+
+    var ALIGN_LABELS = [
+        ["Haut gauche", "Haut centre", "Haut droite"],
+        ["Milieu gauche", "Centre", "Milieu droite"],
+        ["Bas gauche", "Bas centre", "Bas droite"]
+    ];
+
+    function getPosProps(layer) {
+        var tr = layer.property("ADBE Transform Group");
+        var pos = tr.property("ADBE Position");
+        if (pos.dimensionsSeparated) {
+            return { sep: true, x: tr.property("ADBE Position_0"), y: tr.property("ADBE Position_1") };
+        }
+        return { sep: false, p: pos };
+    }
+
+    // Rectangle du calque dans la composition (hors rotation et parentage)
+    function layerRect(layer, t) {
+        var r;
+        if (layer instanceof TextLayer || layer instanceof ShapeLayer) {
+            r = layer.sourceRectAtTime(t, false);
+        } else if (layer.source && layer.source.width) {
+            r = { left: 0, top: 0, width: layer.source.width, height: layer.source.height };
+        } else {
+            return null; // caméra, lumière…
+        }
+        var tr = layer.property("ADBE Transform Group");
+        var a = tr.property("ADBE Anchor Point").valueAtTime(t, false);
+        var s = tr.property("ADBE Scale").valueAtTime(t, false);
+        var pp = getPosProps(layer);
+        var px, py;
+        if (pp.sep) {
+            px = pp.x.valueAtTime(t, false);
+            py = pp.y.valueAtTime(t, false);
+        } else {
+            var v = pp.p.valueAtTime(t, false);
+            px = v[0];
+            py = v[1];
+        }
+        var sx = s[0] / 100, sy = s[1] / 100;
+        var x1 = px + (r.left - a[0]) * sx, x2 = px + (r.left + r.width - a[0]) * sx;
+        var y1 = py + (r.top - a[1]) * sy, y2 = py + (r.top + r.height - a[1]) * sy;
+        return {
+            left: Math.min(x1, x2), top: Math.min(y1, y2),
+            width: Math.abs(x2 - x1), height: Math.abs(y2 - y1)
+        };
+    }
+
+    // Décale la position (toute l'animation si la position a des images clés)
+    function shiftProp(prop, delta) {
+        var k, v;
+        if (prop.numKeys > 0) {
+            for (k = 1; k <= prop.numKeys; k++) {
+                v = prop.keyValue(k);
+                prop.setValueAtKey(k, (v instanceof Array) ? addVec(v, delta) : v + delta[0]);
+            }
+        } else {
+            v = prop.value;
+            prop.setValue((v instanceof Array) ? addVec(v, delta) : v + delta[0]);
+        }
+    }
+
+    function addVec(v, d) {
+        var out = [];
+        for (var i = 0; i < v.length; i++) out.push(v[i] + (i < d.length ? d[i] : 0));
+        return out;
+    }
+
+    function moveLayerBy(layer, dx, dy) {
+        var pp = getPosProps(layer);
+        if (pp.sep) {
+            shiftProp(pp.x, [dx]);
+            shiftProp(pp.y, [dy]);
+        } else {
+            shiftProp(pp.p, [dx, dy]);
+        }
+    }
+
+    // h : 0 gauche, 1 centre, 2 droite — v : 0 haut, 1 milieu, 2 bas
+    function alignLayers(comp, h, v, margin) {
+        var sel = comp.selectedLayers;
+        var t = comp.time;
+        var moved = 0, skipped = 0;
+        for (var i = 0; i < sel.length; i++) {
+            var layer = sel[i];
+            if (layer.parent) { skipped++; continue; }
+            var r = layerRect(layer, t);
+            if (!r) { skipped++; continue; }
+            var tx = (h === 0) ? margin : (h === 1) ? (comp.width - r.width) / 2 : comp.width - margin - r.width;
+            var ty = (v === 0) ? margin : (v === 1) ? (comp.height - r.height) / 2 : comp.height - margin - r.height;
+            moveLayerBy(layer, tx - r.left, ty - r.top);
+            moved++;
+        }
+        return { moved: moved, skipped: skipped };
+    }
+
+    // Dessine un carré avec un « + » au milieu
+    function drawPlusCell() {
+        var g = this.graphics;
+        var w = this.size[0], h = this.size[1];
+        var bg = g.newBrush(g.BrushType.SOLID_COLOR, this.isCenter ? [0.24, 0.24, 0.24, 1] : [0.17, 0.17, 0.17, 1]);
+        var border = g.newPen(g.PenType.SOLID_COLOR, [0.55, 0.55, 0.55, 1], 1);
+        var plus = g.newPen(g.PenType.SOLID_COLOR, [0.9, 0.9, 0.9, 1], 2);
+        g.newPath();
+        g.rectPath(0, 0, w, h);
+        g.fillPath(bg);
+        g.newPath();
+        g.rectPath(0.5, 0.5, w - 1, h - 1);
+        g.strokePath(border);
+        var cx = Math.round(w / 2), cy = Math.round(h / 2);
+        var s = Math.round(Math.min(w, h) * 0.25);
+        g.newPath();
+        g.moveTo(cx - s, cy);
+        g.lineTo(cx + s, cy);
+        g.strokePath(plus);
+        g.newPath();
+        g.moveTo(cx, cy - s);
+        g.lineTo(cx, cy + s);
+        g.strokePath(plus);
+    }
+
+    // =====================================================================
     // Paroles
     // =====================================================================
 
@@ -339,6 +465,43 @@
         var btnAdj = pAdj.add("button", undefined, "Créer sur le(s) calque(s) sélectionné(s)");
         btnAdj.helpTip = "Clique sur une vidéo (ou n'importe quel calque) dans la timeline, puis sur ce bouton";
 
+        // ---------- Alignement ----------
+        var pAli = win.add("panel", undefined, "Alignement");
+        pAli.orientation = "row";
+        pAli.alignChildren = ["left", "center"];
+        pAli.margins = [10, 15, 10, 10];
+        pAli.spacing = 14;
+
+        var grid = pAli.add("group");
+        grid.orientation = "column";
+        grid.spacing = 3;
+        var alignCells = [];
+        for (var gv = 0; gv < 3; gv++) {
+            var gRow = grid.add("group");
+            gRow.orientation = "row";
+            gRow.spacing = 3;
+            for (var gh = 0; gh < 3; gh++) {
+                var cell = gRow.add("button", undefined, "+");
+                cell.preferredSize = [26, 26];
+                cell.helpTip = ALIGN_LABELS[gv][gh];
+                cell.alignH = gh;
+                cell.alignV = gv;
+                cell.isCenter = (gh === 1 && gv === 1);
+                try { cell.onDraw = drawPlusCell; } catch (e) {}
+                alignCells.push(cell);
+            }
+        }
+
+        var gMargin = pAli.add("group");
+        gMargin.orientation = "column";
+        gMargin.alignChildren = ["left", "top"];
+        var gMarginRow = gMargin.add("group");
+        gMarginRow.add("statictext", undefined, "Marge :");
+        var etMargin = gMarginRow.add("edittext", undefined, "0");
+        etMargin.characters = 4;
+        gMarginRow.add("statictext", undefined, "px");
+        gMargin.add("statictext", undefined, "Sélectionne des calques,\npuis clique un carré.", { multiline: true });
+
         // ---------- Paroles ----------
         var pLyr = win.add("panel", undefined, "Paroles");
         pLyr.alignChildren = ["fill", "top"];
@@ -418,6 +581,26 @@
             }
             status.text = count + " calque(s) d'effet créé(s).";
         };
+
+        function onAlignClick() {
+            var comp = getActiveComp();
+            if (!comp) { alert("Ouvre d'abord une composition."); return; }
+            if (!comp.selectedLayers.length) { alert("Sélectionne d'abord un ou plusieurs calques."); return; }
+            var margin = parseFloat(etMargin.text);
+            if (isNaN(margin)) margin = 0;
+
+            app.beginUndoGroup("Aligner : " + ALIGN_LABELS[this.alignV][this.alignH]);
+            try {
+                var res = alignLayers(comp, this.alignH, this.alignV, margin);
+                status.text = res.moved + " calque(s) placé(s) : " + ALIGN_LABELS[this.alignV][this.alignH] + ".";
+                if (res.skipped) status.text += "\n" + res.skipped + " ignoré(s) (parenté, caméra ou lumière).";
+            } catch (e) {
+                alert("Erreur : " + e.message);
+            } finally {
+                app.endUndoGroup();
+            }
+        }
+        for (var ac = 0; ac < alignCells.length; ac++) alignCells[ac].onClick = onAlignClick;
 
         btnLyrics.onClick = function () {
             var comp = getActiveComp();
