@@ -1,9 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.6.2
-// nouveautes: La bibliothèque de courbes est maintenant dans l'onglet COURBE (moins de place)
-// nouveautes: Bouton « Import flow curves » pour importer tes courbes Flow
-// nouveautes: Interface allégée : boutons Inverser, Dupliquer, Dossier et Ma biblio Flow retirés
-// nouveautes: Correction : la poignée de la courbe suit la souris pendant l'appui et se lâche au relâchement
+// version: 1.6.3
+// nouveautes: Bibliothèque en vignettes : chaque courbe enregistrée s'affiche en mini-aperçu, comme dans Flow
+// nouveautes: Clique sur une vignette pour charger la courbe, flèches < > pour changer de page
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -1175,6 +1173,83 @@
         return [round4(b[0]), round4(b[1]), round4(b[2]), round4(b[3])].join(", ");
     }
 
+    // ---------- Vignettes de la bibliothèque ----------
+    var THUMB = { w: 52, h: 50, cols: 5, rows: 2, nameH: 12 };
+
+    function fitName(g, name, font, maxW) {
+        var m = font ? g.measureString(name, font) : g.measureString(name);
+        if (m[0] <= maxW) return name;
+        var t = name;
+        while (t.length > 1) {
+            t = t.substring(0, t.length - 1);
+            var m2 = font ? g.measureString(t + "..", font) : g.measureString(t + "..");
+            if (m2[0] <= maxW) return t + "..";
+        }
+        return t;
+    }
+
+    // Dessine une vignette : fond, mini-courbe avec ses poignées, nom en dessous
+    function drawThumb(el, c, selected) {
+        var g = el.graphics;
+        var W = THUMB.w, H = THUMB.h;
+        var bgV = 0.12, borderV = 0.2, inkV = 0.9, handleV = 0.4, nameV = 0.55;
+        if (selected) { bgV = 0.88; borderV = 0.88; inkV = 0.08; handleV = 0.5; nameV = 0.1; }
+        g.newPath(); g.rectPath(0, 0, W, H);
+        g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR, grey(c ? bgV : THEME.bg)));
+        if (!c) return;
+        g.newPath(); g.rectPath(0.5, 0.5, W - 1, H - 1);
+        g.strokePath(g.newPen(g.PenType.SOLID_COLOR, grey(borderV), 1));
+
+        var bx = 7, by = 4, bw = W - 14, bh = H - THUMB.nameH - 8;
+        var y0 = -0.25, y1 = 1.25;
+        function tx(x) { return bx + x * bw; }
+        function ty(y) { return by + bh - (y - y0) / (y1 - y0) * bh; }
+
+        var a = curveAnchors(c);
+        var hp = g.newPen(g.PenType.SOLID_COLOR, grey(handleV), 1);
+        var s, h;
+        for (s = 0; s < c.segs.length; s++) {
+            h = segHandles(c, s);
+            g.newPath(); g.moveTo(tx(a[s][0]), ty(a[s][1])); g.lineTo(tx(h[0][0]), ty(h[0][1])); g.strokePath(hp);
+            g.newPath(); g.moveTo(tx(a[s + 1][0]), ty(a[s + 1][1])); g.lineTo(tx(h[1][0]), ty(h[1][1])); g.strokePath(hp);
+        }
+        var pen = g.newPen(g.PenType.SOLID_COLOR, grey(inkV), 1.5);
+        for (s = 0; s < c.segs.length; s++) {
+            h = segHandles(c, s);
+            g.newPath();
+            for (var i = 0; i <= 20; i++) {
+                var pt = cubicPt(a[s], h[0], h[1], a[s + 1], i / 20);
+                if (i === 0) g.moveTo(tx(pt[0]), ty(pt[1]));
+                else g.lineTo(tx(pt[0]), ty(pt[1]));
+            }
+            g.strokePath(pen);
+        }
+        for (s = 0; s < c.segs.length; s++) {
+            h = segHandles(c, s);
+            drawSquare(g, tx(h[0][0]), ty(h[0][1]), 1, handleV + 0.2);
+            drawSquare(g, tx(h[1][0]), ty(h[1][1]), 1, handleV + 0.2);
+        }
+
+        var font = safeFont(selected ? "BOLD" : "REGULAR", 9);
+        var label = fitName(g, c.name || "", font, W - 4);
+        var m = font ? g.measureString(label, font) : g.measureString(label);
+        var ink = g.newPen(g.PenType.SOLID_COLOR, grey(nameV), 1);
+        var lx = Math.round((W - m[0]) / 2), ly = H - THUMB.nameH - 2;
+        if (font) g.drawString(label, ink, lx, ly, font);
+        else g.drawString(label, ink, lx, ly);
+    }
+
+    // Force un groupe dessiné à se redessiner (alterne deux fonds presque identiques)
+    var flipState = [];
+    function flipRepaint(el, idx) {
+        try {
+            flipState[idx] = !flipState[idx];
+            var v = THEME.bg;
+            if (flipState[idx]) v = THEME.bg + 0.001;
+            el.graphics.backgroundColor = el.graphics.newBrush(el.graphics.BrushType.SOLID_COLOR, grey(v));
+        } catch (e) { repaint(el); }
+    }
+
     // ---------- Boutons à bascule (onglets, 2/3 clés, modes) ----------
 
     // Dessine un bouton actif (blanc) ou inactif (noir) selon isActive()
@@ -1222,20 +1297,28 @@
         var st = {
             curve: defaultCurve(),  // courbe en cours d'édition (copie)
             mode: "normal",         // normal | reverse | alternate
-            quickIds: [],           // ids des courbes dans la liste déroulante
-            quickLock: false,
+            page: 0,                // page de vignettes affichée
             drag: null
         };
 
-        // ---------- Bibliothèque : liste + actions ----------
+        // ---------- Bibliothèque : vignettes + actions ----------
         var gName = page.add("group");
         gName.orientation = "row";
-        gName.alignChildren = ["fill", "center"];
+        gName.alignChildren = ["left", "center"];
         gName.spacing = 4;
-        var ddQuick = gName.add("dropdownlist", undefined, []);
-        ddQuick.alignment = ["fill", "center"];
-        ddQuick.preferredSize.width = 170;
-        ddQuick.helpTip = "Ta bibliothèque de courbes : choisis une courbe à charger";
+        var btnPrev = themeButton(gName.add("button", undefined, "<"));
+        btnPrev.preferredSize = [26, 22];
+        btnPrev.helpTip = "Page précédente";
+        var tPage = gName.add("statictext", undefined, "1 / 1");
+        tPage.preferredSize.width = 44;
+        tPage.justify = "center";
+        paintText(tPage, THEME.label);
+        var btnNext = themeButton(gName.add("button", undefined, ">"));
+        btnNext.preferredSize = [26, 22];
+        btnNext.helpTip = "Page suivante";
+        var gSpacer = gName.add("group");
+        gSpacer.alignment = ["fill", "center"];
+        gSpacer.preferredSize.width = 60;
         var tKeys = gName.add("statictext", undefined, "Clés");
         tKeys.alignment = ["right", "center"];
         paintText(tKeys, THEME.label);
@@ -1243,6 +1326,38 @@
         btnK2.alignment = ["right", "center"];
         var btnK3 = addToggle(gName, "3", function () { return st.curve.keys === 3; }, 26);
         btnK3.alignment = ["right", "center"];
+
+        // Grille de vignettes (des groupes dessinés, cliquables)
+        var gGrid = page.add("group");
+        gGrid.orientation = "column";
+        gGrid.alignChildren = ["left", "top"];
+        gGrid.alignment = ["left", "top"];
+        gGrid.spacing = 4;
+        var cells = [];
+        var cellIds = [];
+        for (var gr = 0; gr < THUMB.rows; gr++) {
+            var gRow = gGrid.add("group");
+            gRow.orientation = "row";
+            gRow.spacing = 4;
+            for (var gc = 0; gc < THUMB.cols; gc++) {
+                var cell = gRow.add("group");
+                cell.preferredSize = [THUMB.w, THUMB.h];
+                cell.minimumSize = [THUMB.w, THUMB.h];
+                (function (k) {
+                    try {
+                        cell.onDraw = function () {
+                            var idx = cellIds[k] ? findCurveIndex(cellIds[k]) : -1;
+                            var c = null;
+                            if (idx >= 0) c = curveLib[idx];
+                            drawThumb(this, c, !!(c && st.curve.id === c.id));
+                        };
+                    } catch (e) {}
+                    cell.addEventListener("mousedown", function () { pickCell(k); });
+                })(cells.length);
+                cells.push(cell);
+                cellIds.push(null);
+            }
+        }
 
         var gLib = page.add("group");
         gLib.orientation = "row";
@@ -1332,25 +1447,49 @@
             repaint(btnMNormal); repaint(btnMReverse); repaint(btnMAlt);
         }
 
-        // Remplit la liste déroulante (= la bibliothèque)
+        // Remplit la grille de vignettes (= la bibliothèque)
+        function pageCount() {
+            var per = THUMB.cols * THUMB.rows;
+            return Math.max(1, Math.ceil(curveLib.length / per));
+        }
+
+        function repaintCells() {
+            for (var i = 0; i < cells.length; i++) flipRepaint(cells[i], i);
+        }
+
         function refreshQuick(selectId) {
-            ddQuick.removeAll();
-            st.quickIds = [];
-            var selIndex = 0;
-            ddQuick.add("item", "— Nouvelle courbe —");
-            st.quickIds.push(null);
-            for (var i = 0; i < curveLib.length; i++) {
-                var c = curveLib[i];
-                var label = c.name;
-                if (c.keys === 3) label += "  · 3 clés";
-                if (c.lib !== MY_LIB) label += "  · " + c.lib;
-                ddQuick.add("item", label);
-                st.quickIds.push(c.id);
-                if (selectId && c.id === selectId) selIndex = st.quickIds.length - 1;
+            var per = THUMB.cols * THUMB.rows;
+            if (selectId) {
+                var si = findCurveIndex(selectId);
+                if (si >= 0) st.page = Math.floor(si / per);
             }
-            st.quickLock = true;
-            ddQuick.selection = selIndex;
-            st.quickLock = false;
+            var n = pageCount();
+            if (st.page > n - 1) st.page = n - 1;
+            if (st.page < 0) st.page = 0;
+            for (var i = 0; i < cells.length; i++) {
+                var li = st.page * per + i;
+                cellIds[i] = (li < curveLib.length) ? curveLib[li].id : null;
+                var tip = "";
+                if (cellIds[i]) {
+                    var c = curveLib[li];
+                    tip = c.name;
+                    if (c.keys === 3) tip += " (3 clés)";
+                    if (c.lib !== MY_LIB) tip += " · " + c.lib;
+                }
+                try { cells[i].helpTip = tip; } catch (e) {}
+            }
+            tPage.text = (st.page + 1) + " / " + n;
+            btnPrev.enabled = st.page > 0;
+            btnNext.enabled = st.page < n - 1;
+            repaintCells();
+        }
+
+        function pickCell(k) {
+            var id = cellIds[k];
+            if (!id) return;
+            loadIntoEditor(id);
+            repaintCells();
+            setStatus("Courbe « " + st.curve.name + " » chargée.");
         }
 
         function loadIntoEditor(id) {
@@ -1388,17 +1527,8 @@
             refreshAll();
         }
 
-        ddQuick.onChange = function () {
-            if (st.quickLock || !ddQuick.selection) return;
-            var id = st.quickIds[ddQuick.selection.index];
-            if (id) {
-                loadIntoEditor(id);
-                setStatus("Courbe « " + st.curve.name + " » chargée.");
-            } else {
-                st.curve = defaultCurve();
-                refreshAll();
-            }
-        };
+        btnPrev.onClick = function () { st.page--; refreshQuick(null); };
+        btnNext.onClick = function () { st.page++; refreshQuick(null); };
 
         etSeg1.onChange = function () { readFields(); refreshAll(); };
         etSeg2.onChange = function () { readFields(); refreshAll(); };
@@ -1417,7 +1547,7 @@
         };
 
         btnDel.onClick = function () {
-            if (!st.curve.id || findCurveIndex(st.curve.id) < 0) { alert("Choisis d'abord une courbe dans la liste."); return; }
+            if (!st.curve.id || findCurveIndex(st.curve.id) < 0) { alert("Clique d'abord sur une vignette de courbe."); return; }
             if (!confirm("Supprimer la courbe « " + st.curve.name + " » ?")) return;
             curveLib.splice(findCurveIndex(st.curve.id), 1);
             saveCurveLib();
@@ -1506,7 +1636,7 @@
             refreshQuick(st.curve.id);
             var msg = r.added + " courbe(s) importée(s)";
             if (r.found > r.added) msg += " (" + (r.found - r.added) + " déjà présente(s))";
-            setStatus(msg + " : choisis-les dans la liste.");
+            setStatus(msg + " : clique sur une vignette pour la charger.");
         };
 
         // ---------- Glisser les poignées ----------
