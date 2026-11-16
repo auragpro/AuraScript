@@ -1,9 +1,8 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.4.0
-// nouveautes: Paroles : chaque mot (séparé par un espace) devient un texte calé sur un marqueur
-// nouveautes: Nouveaux boutons « Null » et « Text » : même durée que le calque sélectionné, juste au-dessus
-// nouveautes: Les presets de texte sont rangés dans la catégorie « Lyrics »
-// nouveautes: Les 9 carrés d'alignement envoient le calque au bon endroit
+// version: 1.5.0
+// nouveautes: Nouvelle interface minimaliste noir et blanc
+// nouveautes: Boutons qui s'éclairent au survol et au clic
+// nouveautes: Sections Alignement, Lyrics et Presets plus lisibles
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -408,35 +407,132 @@
         return { moved: moved, skipped: skipped };
     }
 
-    // Dessine un carré avec un « + » au milieu
-    function makePlusDraw(isCenter) {
-        return function () { drawPlusCell(this, isCenter); };
+    // =====================================================================
+    // Thème : noir et blanc minimaliste, touches de lumière au survol
+    // =====================================================================
+
+    var THEME = {
+        bg: 0.07,          // fond du panneau
+        btn: 0.11,         // fond des boutons
+        btnOver: 0.16,     // fond au survol
+        btnDown: 0.24,     // fond au clic
+        border: 0.26,      // contour normal
+        borderOver: 0.9,   // contour éclairé
+        text: 0.86,        // texte des boutons
+        label: 0.62,       // textes secondaires
+        title: 0.95,       // titres de section
+        line: 0.18         // traits de séparation
+    };
+
+    function grey(v, a) { return [v, v, v, (a === undefined) ? 1 : a]; }
+
+    function safeFont(style, size) {
+        try { return ScriptUI.newFont("dialog", style, size); } catch (e) { return null; }
     }
 
-    function drawPlusCell(btn, isCenter) {
+    // Couleur de fond d'un élément (groupe, panneau…)
+    function paintBg(el, v) {
+        try { el.graphics.backgroundColor = el.graphics.newBrush(el.graphics.BrushType.SOLID_COLOR, grey(v)); } catch (e) {}
+    }
+
+    // Couleur et police d'un texte (statictext, checkbox…)
+    function paintText(el, v, style, size) {
+        try { el.graphics.foregroundColor = el.graphics.newPen(el.graphics.PenType.SOLID_COLOR, grey(v), 1); } catch (e) {}
+        if (style) {
+            var f = safeFont(style, size || 11);
+            if (f) { try { el.graphics.font = f; } catch (e2) {} }
+        }
+    }
+
+    // Recolore récursivement les textes d'un conteneur (ex. l'en-tête du lanceur)
+    function paintTree(el, skip) {
+        if (!el || el === skip) return;
+        try {
+            if (el.type === "statictext") paintText(el, THEME.label);
+            if (el.children) for (var i = 0; i < el.children.length; i++) paintTree(el.children[i], skip);
+        } catch (e) {}
+    }
+
+    // Titre de section : texte clair + fine ligne
+    function addSection(parent, title) {
+        var g = parent.add("group");
+        g.orientation = "column";
+        g.alignChildren = ["fill", "top"];
+        g.spacing = 5;
+        g.margins = [0, 6, 0, 0];
+        var t = g.add("statictext", undefined, title);
+        paintText(t, THEME.title, "BOLD", 11);
+        var line = g.add("group");
+        line.preferredSize.height = 1;
+        line.alignment = ["fill", "top"];
+        paintBg(line, THEME.line);
+        return g;
+    }
+
+    // Bouton dessiné : kind = "default", "primary" (blanc) ou "plus" (case d'alignement)
+    function makeButtonDraw(kind, isCenter) {
+        return function (ds) { drawThemedButton(this, kind, isCenter, ds); };
+    }
+
+    function drawThemedButton(btn, kind, isCenter, ds) {
         var g = btn.graphics;
         var w = btn.size[0], h = btn.size[1];
-        var bg = g.newBrush(g.BrushType.SOLID_COLOR, isCenter ? [0.24, 0.24, 0.24, 1] : [0.17, 0.17, 0.17, 1]);
-        var border = g.newPen(g.PenType.SOLID_COLOR, [0.55, 0.55, 0.55, 1], 1);
-        var plus = g.newPen(g.PenType.SOLID_COLOR, [0.9, 0.9, 0.9, 1], 2);
+        var over = false, down = false;
+        try { over = ds.mouseOver; down = ds.leftButtonPressed; } catch (e) {}
+
+        // (if/else plutôt que « ? : » imbriqués, qu'After Effects lit mal)
+        var fillV, borderV, inkV;
+        if (kind === "primary") {
+            fillV = 0.88;
+            if (over) fillV = 1;
+            if (down) fillV = 0.72;
+            borderV = fillV;
+            inkV = 0.06;
+        } else {
+            fillV = THEME.btn;
+            borderV = THEME.border;
+            inkV = THEME.text;
+            if (isCenter) borderV = 0.45;
+            if (over) { fillV = THEME.btnOver; borderV = THEME.borderOver; inkV = 1; }
+            if (down) { fillV = THEME.btnDown; borderV = THEME.borderOver; inkV = 1; }
+        }
+
         g.newPath();
         g.rectPath(0, 0, w, h);
-        g.fillPath(bg);
+        g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR, grey(fillV)));
+
         g.newPath();
         g.rectPath(0.5, 0.5, w - 1, h - 1);
-        g.strokePath(border);
-        var cx = Math.round(w / 2), cy = Math.round(h / 2);
-        var s = Math.round(Math.min(w, h) * 0.25);
-        g.newPath();
-        g.moveTo(cx - s, cy);
-        g.lineTo(cx + s, cy);
-        g.strokePath(plus);
-        g.newPath();
-        g.moveTo(cx, cy - s);
-        g.lineTo(cx, cy + s);
-        g.strokePath(plus);
+        g.strokePath(g.newPen(g.PenType.SOLID_COLOR, grey(borderV), 1));
+
+        // halo lumineux discret au survol
+        if ((over || down) && kind !== "primary") {
+            g.newPath();
+            g.rectPath(1.5, 1.5, w - 3, h - 3);
+            g.strokePath(g.newPen(g.PenType.SOLID_COLOR, grey(1, 0.18), 1));
+        }
+
+        var ink = g.newPen(g.PenType.SOLID_COLOR, grey(inkV), (kind === "plus") ? 2 : 1);
+        if (kind === "plus") {
+            var cx = Math.round(w / 2), cy = Math.round(h / 2);
+            var s = Math.round(Math.min(w, h) * 0.22);
+            g.newPath(); g.moveTo(cx - s, cy); g.lineTo(cx + s, cy); g.strokePath(ink);
+            g.newPath(); g.moveTo(cx, cy - s); g.lineTo(cx, cy + s); g.strokePath(ink);
+            return;
+        }
+
+        var label = btn.text;
+        var font = safeFont(kind === "primary" ? "BOLD" : "REGULAR", 11);
+        var m = font ? g.measureString(label, font) : g.measureString(label);
+        var x = Math.round((w - m[0]) / 2), y = Math.round((h - m[1]) / 2);
+        if (font) g.drawString(label, ink, x, y, font);
+        else g.drawString(label, ink, x, y);
     }
 
+    function themeButton(btn, kind, isCenter) {
+        try { btn.onDraw = makeButtonDraw(kind || "default", isCenter === true); } catch (e) {}
+        return btn;
+    }
 
     // =====================================================================
     // Paroles
@@ -533,91 +629,104 @@
 
         win.orientation = "column";
         win.alignChildren = ["fill", "top"];
-        win.spacing = 8;
-        if (!host) win.margins = 10;
+        win.spacing = 10;
+        if (!host) win.margins = 12;
+
+        // Fond noir sur tout le panneau (y compris l'en-tête du lanceur)
+        paintBg(win, THEME.bg);
+        if (host && host.parent) {
+            paintBg(host.parent, THEME.bg);
+            paintTree(host.parent, host);
+        }
 
         // ---------- Alignement ----------
-        var pAli = win.add("panel", undefined, "Alignement");
-        pAli.orientation = "row";
-        pAli.alignChildren = ["left", "center"];
-        pAli.margins = [10, 15, 10, 10];
-        pAli.spacing = 14;
+        var sAli = addSection(win, "ALIGNEMENT");
+        var gAli = sAli.add("group");
+        gAli.orientation = "row";
+        gAli.alignChildren = ["left", "top"];
+        gAli.spacing = 12;
 
-        var grid = pAli.add("group");
+        var grid = gAli.add("group");
         grid.orientation = "column";
-        grid.spacing = 3;
+        grid.spacing = 4;
         var alignCells = []; // index = v * 3 + h
         for (var gv = 0; gv < 3; gv++) {
             var gRow = grid.add("group");
             gRow.orientation = "row";
-            gRow.spacing = 3;
+            gRow.spacing = 4;
             for (var gh = 0; gh < 3; gh++) {
                 var cell = gRow.add("button", undefined, "+");
                 cell.preferredSize = [26, 26];
                 cell.helpTip = ALIGN_LABELS[gv][gh];
-                try { cell.onDraw = makePlusDraw(gh === 1 && gv === 1); } catch (e) {}
+                themeButton(cell, "plus", gh === 1 && gv === 1);
                 cell.cellIndex = gv * 3 + gh;
                 cell.onClick = onAlignClick;
                 alignCells.push(cell);
             }
         }
 
-        var gLayers = pAli.add("group");
+        var gLayers = gAli.add("group");
         gLayers.orientation = "column";
-        gLayers.alignChildren = ["fill", "center"];
-        gLayers.spacing = 3;
-        var btnNull = gLayers.add("button", undefined, "Null");
+        gLayers.alignChildren = ["fill", "top"];
+        gLayers.alignment = ["fill", "top"];
+        gLayers.spacing = 4;
+        var btnNull = themeButton(gLayers.add("button", undefined, "Null"));
         btnNull.preferredSize = [130, 26];
         btnNull.helpTip = "Crée un objet nul au-dessus du/des calque(s) sélectionné(s), avec la même durée";
-        var btnText = gLayers.add("button", undefined, "Text");
+        var btnText = themeButton(gLayers.add("button", undefined, "Text"));
         btnText.preferredSize = [130, 26];
         btnText.helpTip = "Crée un texte au-dessus du/des calque(s) sélectionné(s), avec la même durée";
-        var btnAdj = gLayers.add("button", undefined, "Adjustment layer");
+        var btnAdj = themeButton(gLayers.add("button", undefined, "Adjustment layer"));
         btnAdj.preferredSize = [130, 26];
         btnAdj.helpTip = "Crée un calque d'effet au-dessus du/des calque(s) sélectionné(s), avec la même durée";
 
-        // ---------- Paroles ----------
-        var pLyr = win.add("panel", undefined, "Lyrics");
-        pLyr.alignChildren = ["fill", "top"];
-        pLyr.margins = [10, 15, 10, 10];
-        pLyr.add("statictext", undefined, "Un mot = un texte, calé sur un marqueur :");
+        // ---------- Lyrics ----------
+        var pLyr = addSection(win, "LYRICS");
+        var tLyr = pLyr.add("statictext", undefined, "Un mot = un texte, calé sur un marqueur");
+        paintText(tLyr, THEME.label);
         var etLyrics = pLyr.add("edittext", undefined, "", { multiline: true, scrolling: true, wantReturn: true });
-        etLyrics.preferredSize = [260, 120];
+        etLyrics.preferredSize = [260, 110];
 
         var gOpt = pLyr.add("group");
-        gOpt.add("statictext", undefined, "Taille :");
+        gOpt.orientation = "row";
+        gOpt.alignChildren = ["left", "center"];
+        gOpt.spacing = 6;
+        var tSize = gOpt.add("statictext", undefined, "Taille");
+        paintText(tSize, THEME.label);
         var etSize = gOpt.add("edittext", undefined, "70");
         etSize.characters = 4;
-
-        var chkLyrPreset = pLyr.add("checkbox", undefined, "Appliquer le preset choisi ci-dessous");
+        var chkLyrPreset = gOpt.add("checkbox", undefined, "Avec le preset");
         chkLyrPreset.value = false;
+        chkLyrPreset.helpTip = "Applique le preset choisi dans la section Presets aux textes créés";
+        paintText(chkLyrPreset, THEME.label);
 
-        var btnLyrics = pLyr.add("button", undefined, "Créer les paroles");
+        var btnLyrics = themeButton(pLyr.add("button", undefined, "Créer les paroles"), "primary");
+        btnLyrics.preferredSize.height = 28;
 
-        // ---------- Presets (dans Lyrics) ----------
-        var pPre = pLyr.add("group");
-        pPre.orientation = "column";
-        pPre.alignChildren = ["fill", "top"];
-        pPre.spacing = 6;
-        pPre.margins = [0, 8, 0, 0];
-        pPre.add("statictext", undefined, "Presets de texte (.ffx) :");
+        // ---------- Presets ----------
+        var pPre = addSection(win, "PRESETS  .FFX");
         var gPre = pPre.add("group");
+        gPre.orientation = "row";
         gPre.alignChildren = ["fill", "center"];
+        gPre.spacing = 4;
         var ddPreset = gPre.add("dropdownlist", undefined, []);
         ddPreset.alignment = ["fill", "center"];
         ddPreset.preferredSize.width = 150;
-        var btnAddPreset = gPre.add("button", undefined, "+ Preset");
+        var btnAddPreset = themeButton(gPre.add("button", undefined, "+ Preset"));
         btnAddPreset.alignment = ["right", "center"];
+        btnAddPreset.preferredSize = [70, 24];
         btnAddPreset.helpTip = "Ajouter un ou plusieurs fichiers .ffx à la liste";
-        var btnDelPreset = gPre.add("button", undefined, "–");
+        var btnDelPreset = themeButton(gPre.add("button", undefined, "–"));
         btnDelPreset.alignment = ["right", "center"];
-        btnDelPreset.preferredSize.width = 28;
+        btnDelPreset.preferredSize = [26, 24];
         btnDelPreset.helpTip = "Retirer le preset choisi de la liste";
-        var btnApply = pPre.add("button", undefined, "Appliquer aux textes sélectionnés");
+        var btnApply = themeButton(pPre.add("button", undefined, "Appliquer aux textes sélectionnés"));
+        btnApply.preferredSize.height = 26;
         btnApply.helpTip = "Le preset démarre au début du texte et son animation est étirée jusqu'à la fin";
 
         var status = win.add("statictext", undefined, "", { multiline: true });
-        status.preferredSize.height = 34;
+        status.preferredSize.height = 30;
+        paintText(status, THEME.label);
 
         // ---------- Logique ----------
 
