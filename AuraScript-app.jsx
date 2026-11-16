@@ -1,6 +1,6 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.3.1
-// nouveautes: Correction : les 9 carrés d'alignement fonctionnent tous
+// version: 1.3.2
+// nouveautes: Correction : chaque carré d'alignement envoie le calque au bon endroit (gauche, haut, centre…)
 // nouveautes: Bouton « Adjustment layer » à droite de la grille d'alignement
 // nouveautes: Le calque d'effet garde le nom par défaut d'After Effects
 // nouveautes: Le calque d'effet se place toujours juste au-dessus du calque sélectionné
@@ -377,8 +377,13 @@
                 // Calque parenté : on le détache le temps du calcul, puis on le rattache sans le faire bouger
                 if (parent) layer.setParentWithJump();
                 var r = layerRect(layer, t);
-                var tx = (h === 0) ? 0 : (h === 1) ? (comp.width - r.width) / 2 : comp.width - r.width;
-                var ty = (v === 0) ? 0 : (v === 1) ? (comp.height - r.height) / 2 : comp.height - r.height;
+                // (pas de conditions « ? : » imbriquées : After Effects les lit mal)
+                var tx = comp.width - r.width;                     // droite
+                if (h === 0) tx = 0;                               // gauche
+                else if (h === 1) tx = (comp.width - r.width) / 2; // centre
+                var ty = comp.height - r.height;                     // bas
+                if (v === 0) ty = 0;                                 // haut
+                else if (v === 1) ty = (comp.height - r.height) / 2; // milieu
                 moveLayerBy(layer, tx - r.left, ty - r.top);
                 moved++;
             } catch (e) {
@@ -527,6 +532,7 @@
         var grid = pAli.add("group");
         grid.orientation = "column";
         grid.spacing = 3;
+        var alignCells = []; // index = v * 3 + h
         for (var gv = 0; gv < 3; gv++) {
             var gRow = grid.add("group");
             gRow.orientation = "row";
@@ -536,7 +542,9 @@
                 cell.preferredSize = [26, 26];
                 cell.helpTip = ALIGN_LABELS[gv][gh];
                 try { cell.onDraw = makePlusDraw(gh === 1 && gv === 1); } catch (e) {}
-                cell.onClick = makeAlignHandler(gh, gv);
+                cell.cellIndex = gv * 3 + gh;
+                cell.onClick = onAlignClick;
+                alignCells.push(cell);
             }
         }
 
@@ -624,9 +632,17 @@
             status.text = count + " calque(s) d'effet créé(s).";
         };
 
-        // Chaque carré garde sa propre position (h, v) grâce à une fonction dédiée
-        function makeAlignHandler(h, v) {
-            return function () {
+        // Retrouve quel carré a été cliqué grâce à sa place dans la liste (index = v * 3 + h)
+        function onAlignClick() {
+            var idx = -1;
+            for (var c = 0; c < alignCells.length; c++) {
+                if (alignCells[c] === this) { idx = c; break; }
+            }
+            if (idx < 0) idx = parseInt(this.cellIndex, 10);
+            if (isNaN(idx) || idx < 0 || idx > 8) return;
+            var h = idx % 3;
+            var v = Math.floor(idx / 3);
+            {
                 var comp = getActiveComp();
                 if (!comp) { alert("Ouvre d'abord une composition."); return; }
                 if (!comp.selectedLayers.length) { alert("Sélectionne d'abord un ou plusieurs calques."); return; }
@@ -641,7 +657,7 @@
                 } finally {
                     app.endUndoGroup();
                 }
-            };
+            }
         }
 
         btnLyrics.onClick = function () {
