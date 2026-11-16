@@ -1,12 +1,9 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.3.2
-// nouveautes: Correction : chaque carré d'alignement envoie le calque au bon endroit (gauche, haut, centre…)
-// nouveautes: Bouton « Adjustment layer » à droite de la grille d'alignement
-// nouveautes: Le calque d'effet garde le nom par défaut d'After Effects
-// nouveautes: Le calque d'effet se place toujours juste au-dessus du calque sélectionné
-// nouveautes: Les paroles sont toujours centrées au milieu de l'image
-// nouveautes: Presets de texte : « + Preset » ajoute directement tes fichiers .ffx
-// nouveautes: Le preset s'applique sur toute la durée du texte sélectionné (animation étirée du début à la fin)
+// version: 1.4.0
+// nouveautes: Paroles : chaque mot (séparé par un espace) devient un texte calé sur un marqueur
+// nouveautes: Nouveaux boutons « Null » et « Text » : même durée que le calque sélectionné, juste au-dessus
+// nouveautes: Les presets de texte sont rangés dans la catégorie « Lyrics »
+// nouveautes: Les 9 carrés d'alignement envoient le calque au bon endroit
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -221,62 +218,78 @@
     // Calque d'effet
     // =====================================================================
 
-    // Crée un calque d'effet avec la commande d'After Effects (Calque > Nouveau > Calque d'effets),
-    // pour qu'il garde le nom par défaut
-    function newDefaultAdjustment(comp) {
+    // Lance une commande du menu Calque > Nouveau d'After Effects (le calque garde son nom par défaut)
+    // et renvoie le nouveau calque s'il correspond à ce qu'on attend
+    function newLayerByCommand(comp, names, fallbackId, isWanted) {
         var ids = [];
-        var names = ["Adjustment Layer", "Calque d'effets", "Calque d\u2019effets", "Calque d'effet"];
         for (var i = 0; i < names.length; i++) {
             try {
                 var id = app.findMenuCommandId(names[i]);
                 if (id) ids.push(id);
             } catch (e) {}
         }
-        ids.push(2279);
+        ids.push(fallbackId);
         for (var j = 0; j < ids.length; j++) {
             var before = comp.numLayers;
             try { app.executeCommand(ids[j]); } catch (e2) { continue; }
             if (comp.numLayers > before) {
                 var sel = comp.selectedLayers;
-                for (var k = 0; k < sel.length; k++) {
-                    if (sel[k].adjustmentLayer) return sel[k];
-                }
-                for (var n = 1; n <= comp.numLayers; n++) {
-                    if (comp.layer(n).adjustmentLayer) return comp.layer(n);
-                }
+                var lay = sel.length ? sel[0] : comp.layer(1);
+                if (isWanted(lay)) return lay;
+                try { lay.remove(); } catch (e3) {} // mauvaise commande : on annule
             }
         }
         return null;
     }
 
-    // Nom par défaut si la commande d'After Effects n'est pas disponible
-    function defaultAdjustmentName(comp) {
+    function isAdjustment(l) { return l.adjustmentLayer === true; }
+    function isNull(l) { return l.nullLayer === true; }
+
+    // Nom par défaut de secours (si la commande d'After Effects n'est pas disponible)
+    function nextDefaultName(comp, base) {
         var max = 0;
+        var re = new RegExp("^" + base + " (\\d+)$");
         for (var i = 1; i <= comp.numLayers; i++) {
-            var m = String(comp.layer(i).name).match(/^Adjustment Layer (\d+)$/);
+            var m = String(comp.layer(i).name).match(re);
             if (m && parseInt(m[1], 10) > max) max = parseInt(m[1], 10);
         }
-        return "Adjustment Layer " + (max + 1);
+        return base + " " + (max + 1);
     }
 
-    function createAdjustmentFor(comp, srcLayer) {
+    // kind : "adjust" (calque d'effets), "null" (objet nul) ou "text" (texte)
+    // Le nouveau calque a la même durée que srcLayer et se place juste au-dessus
+    function createSpanLayerFor(comp, srcLayer, kind) {
         var inP = srcLayer.inPoint;
         var outP = srcLayer.outPoint;
         if (outP - inP <= 0) throw new Error("Le calque « " + srcLayer.name + " » a une durée nulle.");
 
         deselectAll(comp);
         srcLayer.selected = true;
-        var adj = newDefaultAdjustment(comp);
-        if (!adj) {
-            adj = comp.layers.addSolid([1, 1, 1], defaultAdjustmentName(comp),
-                comp.width, comp.height, comp.pixelAspect, comp.duration);
-            adj.adjustmentLayer = true;
+        var lay = null;
+
+        if (kind === "adjust") {
+            lay = newLayerByCommand(comp, ["Adjustment Layer", "Calque d'effets", "Calque d’effets"], 2279, isAdjustment);
+            if (!lay) {
+                lay = comp.layers.addSolid([1, 1, 1], nextDefaultName(comp, "Adjustment Layer"),
+                    comp.width, comp.height, comp.pixelAspect, comp.duration);
+                lay.adjustmentLayer = true;
+            }
+        } else if (kind === "null") {
+            lay = newLayerByCommand(comp, ["Null Object", "Objet nul"], 2767, isNull);
+            if (!lay) lay = comp.layers.addNull(comp.duration);
+        } else {
+            lay = comp.layers.addText("Texte");
+            var prop = getTextDocProp(lay);
+            var td = prop.value;
+            td.justification = ParagraphJustification.CENTER_JUSTIFY;
+            prop.setValue(td);
+            centerTextLayer(lay, comp);
         }
-        // Le calque d'effet couvre exactement la durée du calque choisi
-        adj.inPoint = inP;
-        adj.outPoint = outP;
-        adj.moveBefore(srcLayer);
-        return adj;
+
+        lay.inPoint = inP;
+        lay.outPoint = outP;
+        lay.moveBefore(srcLayer);
+        return lay;
     }
 
     // =====================================================================
@@ -457,19 +470,20 @@
     }
 
     function createLyrics(comp, rawText, fontSize, preset) {
-        var rawLines = String(rawText).split(/\r\n|\r|\n/);
+        // Chaque mot (séparé par un espace ou un retour à la ligne) devient un texte
+        var rawWords = String(rawText).split(/\s+/);
         var lines = [];
-        for (var i = 0; i < rawLines.length; i++) {
-            var l = trim(rawLines[i]);
+        for (var i = 0; i < rawWords.length; i++) {
+            var l = trim(rawWords[i]);
             if (l !== "") lines.push(l);
         }
-        if (!lines.length) throw new Error("Colle d'abord les paroles (une ligne = un texte).");
+        if (!lines.length) throw new Error("Écris d'abord les paroles (un mot = un texte).");
 
         var mk = getMarkers(comp);
         if (!mk) {
             throw new Error("Aucun marqueur trouvé.\n\nAjoute des marqueurs sur la composition " +
                 "(touche * du pavé numérique, aucun calque sélectionné) ou sur ton calque audio " +
-                "(sélectionne-le puis touche *), un marqueur au début de chaque ligne.");
+                "(sélectionne-le puis touche *), un marqueur au début de chaque mot.");
         }
 
         var n = Math.min(lines.length, mk.times.length);
@@ -500,7 +514,7 @@
 
         var msg = created.length + " texte(s) créé(s) depuis les marqueurs de " + mk.source + ".";
         if (lines.length > mk.times.length) {
-            msg += "\n" + (lines.length - mk.times.length) + " ligne(s) sans marqueur ignorée(s).";
+            msg += "\n" + (lines.length - mk.times.length) + " mot(s) sans marqueur ignoré(s).";
         }
         return msg;
     }
@@ -548,15 +562,25 @@
             }
         }
 
-        var btnAdj = pAli.add("button", undefined, "Adjustment layer");
-        btnAdj.preferredSize = [130, 28];
+        var gLayers = pAli.add("group");
+        gLayers.orientation = "column";
+        gLayers.alignChildren = ["fill", "center"];
+        gLayers.spacing = 3;
+        var btnNull = gLayers.add("button", undefined, "Null");
+        btnNull.preferredSize = [130, 26];
+        btnNull.helpTip = "Crée un objet nul au-dessus du/des calque(s) sélectionné(s), avec la même durée";
+        var btnText = gLayers.add("button", undefined, "Text");
+        btnText.preferredSize = [130, 26];
+        btnText.helpTip = "Crée un texte au-dessus du/des calque(s) sélectionné(s), avec la même durée";
+        var btnAdj = gLayers.add("button", undefined, "Adjustment layer");
+        btnAdj.preferredSize = [130, 26];
         btnAdj.helpTip = "Crée un calque d'effet au-dessus du/des calque(s) sélectionné(s), avec la même durée";
 
         // ---------- Paroles ----------
-        var pLyr = win.add("panel", undefined, "Paroles");
+        var pLyr = win.add("panel", undefined, "Lyrics");
         pLyr.alignChildren = ["fill", "top"];
         pLyr.margins = [10, 15, 10, 10];
-        pLyr.add("statictext", undefined, "Une ligne = un texte, calé sur un marqueur :");
+        pLyr.add("statictext", undefined, "Un mot = un texte, calé sur un marqueur :");
         var etLyrics = pLyr.add("edittext", undefined, "", { multiline: true, scrolling: true, wantReturn: true });
         etLyrics.preferredSize = [260, 120];
 
@@ -570,10 +594,13 @@
 
         var btnLyrics = pLyr.add("button", undefined, "Créer les paroles");
 
-        // ---------- Presets ----------
-        var pPre = win.add("panel", undefined, "Presets de texte (.ffx)");
+        // ---------- Presets (dans Lyrics) ----------
+        var pPre = pLyr.add("group");
+        pPre.orientation = "column";
         pPre.alignChildren = ["fill", "top"];
-        pPre.margins = [10, 15, 10, 10];
+        pPre.spacing = 6;
+        pPre.margins = [0, 8, 0, 0];
+        pPre.add("statictext", undefined, "Presets de texte (.ffx) :");
         var gPre = pPre.add("group");
         gPre.alignChildren = ["fill", "center"];
         var ddPreset = gPre.add("dropdownlist", undefined, []);
@@ -607,21 +634,22 @@
             return ddPreset.selection ? presets[ddPreset.selection.index] : null;
         }
 
-        btnAdj.onClick = function () {
+        var SPAN_LABELS = { adjust: "Adjustment layer", "null": "Null", text: "Text" };
+
+        // Crée un calque (adjust / null / text) de la même durée que chaque calque sélectionné
+        function onSpanClick(kind) {
             var comp = getActiveComp();
             if (!comp) { alert("Ouvre d'abord une composition."); return; }
             var sel = comp.selectedLayers;
             var targets = [];
-            for (var i = 0; i < sel.length; i++) {
-                if (!sel[i].adjustmentLayer) targets.push(sel[i]);
-            }
+            for (var i = 0; i < sel.length; i++) targets.push(sel[i]);
             if (!targets.length) { alert("Clique d'abord sur une vidéo (ou un calque) dans la timeline."); return; }
 
-            app.beginUndoGroup("Calque d'effet");
+            app.beginUndoGroup(SPAN_LABELS[kind]);
             var count = 0;
             try {
                 for (var j = 0; j < targets.length; j++) {
-                    createAdjustmentFor(comp, targets[j]);
+                    createSpanLayerFor(comp, targets[j], kind);
                     count++;
                 }
             } catch (e) {
@@ -629,8 +657,11 @@
             } finally {
                 app.endUndoGroup();
             }
-            status.text = count + " calque(s) d'effet créé(s).";
-        };
+            status.text = count + " calque(s) « " + SPAN_LABELS[kind] + " » créé(s).";
+        }
+        btnAdj.onClick = function () { onSpanClick("adjust"); };
+        btnNull.onClick = function () { onSpanClick("null"); };
+        btnText.onClick = function () { onSpanClick("text"); };
 
         // Retrouve quel carré a été cliqué grâce à sa place dans la liste (index = v * 3 + h)
         function onAlignClick() {
