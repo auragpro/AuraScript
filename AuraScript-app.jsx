@@ -1,10 +1,9 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.0.1
-// nouveautes: Correction de l'erreur « Erreur de syntaxe (ligne 1) »
-// nouveautes: Mise à jour automatique à l'ouverture du panneau
-// nouveautes: Calque d'effet calé sur la durée du calque sélectionné
-// nouveautes: Paroles : un texte par ligne, calé sur les marqueurs
-// nouveautes: Presets de texte (style ou fichier .ffx) avec + Preset et Appliquer
+// version: 1.1.0
+// nouveautes: Le calque d'effet se place toujours juste au-dessus du calque sélectionné
+// nouveautes: Les paroles sont toujours centrées au milieu de l'image
+// nouveautes: Presets de texte : « + Preset » ajoute directement tes fichiers .ffx
+// nouveautes: Le preset s'applique sur toute la durée du texte sélectionné (animation étirée du début à la fin)
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -12,12 +11,7 @@
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
     var SETTINGS_KEY = "presets";
-    var POSITIONS = [
-        { label: "Haut", y: 0.15 },
-        { label: "Centre", y: 0.5 },
-        { label: "Bas", y: 0.85 }
-    ];
-    var presets = [];
+    var presets = []; // [{ name, path }]
 
     // =====================================================================
     // Utilitaires
@@ -32,10 +26,6 @@
         return String(s).replace(/^\s+|\s+$/g, "");
     }
 
-    function deselectAll(comp) {
-        for (var i = 1; i <= comp.numLayers; i++) comp.layer(i).selected = false;
-    }
-
     function isWindows() {
         return $.os.indexOf("Windows") !== -1;
     }
@@ -44,28 +34,31 @@
         return layer.property("ADBE Text Properties").property("ADBE Text Document");
     }
 
+    function deselectAll(comp) {
+        for (var i = 1; i <= comp.numLayers; i++) comp.layer(i).selected = false;
+    }
+
     // =====================================================================
-    // Presets (sauvegardés dans les préférences d'After Effects)
+    // Presets .ffx (liste enregistrée dans les préférences d'After Effects)
     // =====================================================================
 
     function loadPresets() {
         presets = [];
+        var arr = null;
         try {
-            var section = SETTINGS_SECTION;
-            // Récupère les presets de l'ancienne version (« Calque d'effet & Paroles »)
-            if (!app.settings.haveSetting(section, SETTINGS_KEY) &&
-                app.settings.haveSetting("CalqueEffetParoles", SETTINGS_KEY)) {
-                section = "CalqueEffetParoles";
-            }
-            if (app.settings.haveSetting(section, SETTINGS_KEY)) {
-                var s = app.settings.getSetting(section, SETTINGS_KEY);
-                if (s) {
-                    var arr = eval(s);
-                    if (arr instanceof Array) presets = arr;
-                }
+            if (app.settings.haveSetting(SETTINGS_SECTION, SETTINGS_KEY)) {
+                arr = eval(app.settings.getSetting(SETTINGS_SECTION, SETTINGS_KEY));
             }
         } catch (e) {
-            presets = [];
+            arr = null;
+        }
+        if (!(arr instanceof Array)) return;
+        // On ne garde que les presets .ffx (les anciens presets « style » sont ignorés)
+        for (var i = 0; i < arr.length; i++) {
+            var p = arr[i];
+            if (p && p.path && /\.ffx$/i.test(p.path)) {
+                presets.push({ name: p.name || decodeURI(new File(p.path).name), path: p.path });
+            }
         }
     }
 
@@ -73,91 +66,159 @@
         app.settings.saveSetting(SETTINGS_SECTION, SETTINGS_KEY, presets.toSource());
     }
 
-    // Lit le style d'un TextDocument
-    function captureStyle(td) {
-        var st = {};
-        try { st.font = td.font; } catch (e) {}
-        try { st.fontSize = td.fontSize; } catch (e) {}
-        try { st.applyFill = td.applyFill; } catch (e) {}
-        try { if (td.applyFill) st.fillColor = [td.fillColor[0], td.fillColor[1], td.fillColor[2]]; } catch (e) {}
-        try { st.applyStroke = td.applyStroke; } catch (e) {}
-        try {
-            if (td.applyStroke) {
-                st.strokeColor = [td.strokeColor[0], td.strokeColor[1], td.strokeColor[2]];
-                st.strokeWidth = td.strokeWidth;
-                st.strokeOverFill = td.strokeOverFill;
-            }
-        } catch (e) {}
-        try { st.tracking = td.tracking; } catch (e) {}
-        try { st.autoLeading = td.autoLeading; } catch (e) {}
-        try { if (!td.autoLeading) st.leading = td.leading; } catch (e) {}
-        try { st.allCaps = td.allCaps; } catch (e) {}
-        try { st.fauxBold = td.fauxBold; } catch (e) {}
-        try { st.fauxItalic = td.fauxItalic; } catch (e) {}
-        return st;
+    // ---------- Étirement des images clés du preset sur la durée du calque ----------
+
+    function propPath(prop) {
+        var parts = [];
+        var p = prop;
+        while (p && p.parentProperty) {
+            parts.unshift(p.propertyIndex);
+            p = p.parentProperty;
+        }
+        return parts.join("/");
     }
 
-    // Applique un style à un TextDocument (le texte lui-même n'est pas modifié)
-    function setStyle(td, st) {
-        try { if (st.font) td.font = st.font; } catch (e) {}
-        try { if (st.fontSize) td.fontSize = st.fontSize; } catch (e) {}
-        try {
-            if (st.applyFill !== undefined) td.applyFill = st.applyFill;
-            if (st.applyFill && st.fillColor) td.fillColor = st.fillColor;
-        } catch (e) {}
-        try {
-            if (st.applyStroke !== undefined) td.applyStroke = st.applyStroke;
-            if (st.applyStroke) {
-                if (st.strokeColor) td.strokeColor = st.strokeColor;
-                if (st.strokeWidth !== undefined) td.strokeWidth = st.strokeWidth;
-                if (st.strokeOverFill !== undefined) td.strokeOverFill = st.strokeOverFill;
-            }
-        } catch (e) {}
-        try { if (st.tracking !== undefined) td.tracking = st.tracking; } catch (e) {}
-        try { if (st.autoLeading !== undefined) td.autoLeading = st.autoLeading; } catch (e) {}
-        try { if (st.leading !== undefined && !st.autoLeading) td.leading = st.leading; } catch (e) {}
-        try { if (st.allCaps !== undefined) td.allCaps = st.allCaps; } catch (e) {}
-        try { if (st.fauxBold !== undefined) td.fauxBold = st.fauxBold; } catch (e) {}
-        try { if (st.fauxItalic !== undefined) td.fauxItalic = st.fauxItalic; } catch (e) {}
-    }
-
-    // Applique un style à un calque texte (gère aussi les images clés de texte source)
-    function applyStyleToLayer(layer, st) {
-        var prop = getTextDocProp(layer);
-        var td;
-        if (prop.numKeys > 0) {
-            for (var k = 1; k <= prop.numKeys; k++) {
-                td = prop.keyValue(k);
-                setStyle(td, st);
-                prop.setValueAtKey(k, td);
-            }
-        } else {
-            td = prop.value;
-            setStyle(td, st);
-            prop.setValue(td);
+    // Appelle cb(prop) pour chaque propriété animable (avec valeur) du calque
+    function walkProps(group, cb) {
+        for (var i = 1; i <= group.numProperties; i++) {
+            var p = null;
+            try { p = group.property(i); } catch (e) { p = null; }
+            if (!p || p.matchName === "ADBE Marker") continue;
+            try {
+                if (p.propertyType === PropertyType.PROPERTY) {
+                    if (p.propertyValueType !== PropertyValueType.NO_VALUE && p.canVaryOverTime) cb(p);
+                } else {
+                    walkProps(p, cb);
+                }
+            } catch (e) {}
         }
     }
 
-    // Applique un preset (style ou .ffx) à une liste de calques texte
+    // Mémorise les images clés existantes : "chemin|temps"
+    function snapshotKeys(layer) {
+        var set = {};
+        walkProps(layer, function (p) {
+            var path = propPath(p);
+            for (var k = 1; k <= p.numKeys; k++) set[path + "|" + p.keyTime(k).toFixed(4)] = true;
+        });
+        return set;
+    }
+
+    function readKey(p, k) {
+        var d = {
+            time: p.keyTime(k),
+            value: p.keyValue(k),
+            inInterp: p.keyInInterpolationType(k),
+            outInterp: p.keyOutInterpolationType(k)
+        };
+        try { d.inEase = p.keyInTemporalEase(k); d.outEase = p.keyOutTemporalEase(k); } catch (e) {}
+        try { d.tContinuous = p.keyTemporalContinuous(k); d.tAuto = p.keyTemporalAutoBezier(k); } catch (e) {}
+        if (p.isSpatial) {
+            try {
+                d.inTan = p.keyInSpatialTangent(k);
+                d.outTan = p.keyOutSpatialTangent(k);
+                d.sContinuous = p.keySpatialContinuous(k);
+                d.sAuto = p.keySpatialAutoBezier(k);
+            } catch (e) {}
+        }
+        return d;
+    }
+
+    function scaleEase(arr, factor) {
+        var out = [];
+        for (var i = 0; i < arr.length; i++) {
+            var sp = factor > 0 ? arr[i].speed / factor : arr[i].speed;
+            out.push(new KeyframeEase(sp, arr[i].influence));
+        }
+        return out;
+    }
+
+    function writeKey(p, d, newTime, factor) {
+        var idx = p.addKey(newTime);
+        p.setValueAtKey(idx, d.value);
+        try { p.setInterpolationTypeAtKey(idx, d.inInterp, d.outInterp); } catch (e) {}
+        try {
+            if (d.tContinuous !== undefined) p.setTemporalContinuousAtKey(idx, d.tContinuous);
+            if (d.tAuto !== undefined) p.setTemporalAutoBezierAtKey(idx, d.tAuto);
+        } catch (e) {}
+        try {
+            if (d.inEase && d.outEase && !d.tAuto) {
+                p.setTemporalEaseAtKey(idx, scaleEase(d.inEase, factor), scaleEase(d.outEase, factor));
+            }
+        } catch (e) {}
+        if (p.isSpatial && d.inTan) {
+            try {
+                p.setSpatialTangentsAtKey(idx, d.inTan, d.outTan);
+                p.setSpatialContinuousAtKey(idx, d.sContinuous);
+                p.setSpatialAutoBezierAtKey(idx, d.sAuto);
+            } catch (e) {}
+        }
+    }
+
+    // Étire les images clés ajoutées par le preset pour couvrir [inPoint, outPoint]
+    function stretchNewKeys(layer, before) {
+        var targets = []; // { prop, keys: [indices] }
+        var minT = null, maxT = null;
+
+        walkProps(layer, function (p) {
+            if (p.numKeys === 0) return;
+            var path = propPath(p);
+            var idxs = [];
+            for (var k = 1; k <= p.numKeys; k++) {
+                if (!before[path + "|" + p.keyTime(k).toFixed(4)]) {
+                    idxs.push(k);
+                    var t = p.keyTime(k);
+                    if (minT === null || t < minT) minT = t;
+                    if (maxT === null || t > maxT) maxT = t;
+                }
+            }
+            if (idxs.length) targets.push({ prop: p, keys: idxs });
+        });
+
+        if (!targets.length || maxT - minT <= 0.0001) return 0;
+
+        var start = layer.inPoint, end = layer.outPoint;
+        var factor = (end - start) / (maxT - minT);
+
+        for (var i = 0; i < targets.length; i++) {
+            var p = targets[i].prop;
+            var data = [];
+            var j;
+            for (j = 0; j < targets[i].keys.length; j++) data.push(readKey(p, targets[i].keys[j]));
+            for (j = targets[i].keys.length - 1; j >= 0; j--) p.removeKey(targets[i].keys[j]);
+            for (j = 0; j < data.length; j++) {
+                writeKey(p, data[j], start + (data[j].time - minT) * factor, factor);
+            }
+        }
+        return targets.length;
+    }
+
+    // Applique un preset .ffx à un calque, calé et étiré sur la durée du calque
+    function applyPresetToLayer(comp, preset, layer) {
+        var f = new File(preset.path);
+        if (!f.exists) throw new Error("Fichier de preset introuvable :\n" + preset.path);
+
+        var before = snapshotKeys(layer);
+        deselectAll(comp);
+        layer.selected = true;
+        comp.time = layer.inPoint;   // les images clés du preset démarrent au début du texte
+        layer.applyPreset(f);
+        stretchNewKeys(layer, before);
+    }
+
     function applyPresetToLayers(comp, preset, layers) {
-        if (!layers.length) return;
-        if (preset.type === "style") {
-            for (var i = 0; i < layers.length; i++) applyStyleToLayer(layers[i], preset.style);
-        } else if (preset.type === "ffx") {
-            var f = new File(preset.path);
-            if (!f.exists) throw new Error("Fichier introuvable :\n" + preset.path);
-            // applyPreset s'applique à tous les calques sélectionnés de la compo
-            deselectAll(comp);
-            for (var j = 0; j < layers.length; j++) layers[j].selected = true;
-            layers[0].applyPreset(f);
-        }
+        var savedTime = comp.time;
+        for (var i = 0; i < layers.length; i++) applyPresetToLayer(comp, preset, layers[i]);
+        comp.time = savedTime;
+        deselectAll(comp);
+        for (var j = 0; j < layers.length; j++) layers[j].selected = true;
     }
 
     // =====================================================================
     // Calque d'effet
     // =====================================================================
 
-    function createAdjustmentFor(comp, srcLayer, placeAbove) {
+    function createAdjustmentFor(comp, srcLayer) {
         var inP = srcLayer.inPoint;
         var outP = srcLayer.outPoint;
         var duration = outP - inP;
@@ -170,7 +231,7 @@
         adj.startTime = inP;
         adj.inPoint = inP;
         adj.outPoint = outP;
-        if (placeAbove) adj.moveBefore(srcLayer);
+        adj.moveBefore(srcLayer);
         return adj;
     }
 
@@ -181,30 +242,31 @@
     // Marqueurs : ceux du calque sélectionné (ex. la musique) s'il en a, sinon ceux de la composition
     function getMarkers(comp) {
         var sel = comp.selectedLayers;
-        var i, m, times = [];
+        var i, k, m, times = [];
         for (i = 0; i < sel.length; i++) {
             m = sel[i].property("ADBE Marker");
             if (m && m.numKeys > 0) {
-                for (var k = 1; k <= m.numKeys; k++) times.push(m.keyTime(k));
+                for (k = 1; k <= m.numKeys; k++) times.push(m.keyTime(k));
                 return { times: times, end: sel[i].outPoint, source: "le calque « " + sel[i].name + " »" };
             }
         }
         m = comp.markerProperty;
         if (m && m.numKeys > 0) {
-            for (var k2 = 1; k2 <= m.numKeys; k2++) times.push(m.keyTime(k2));
+            for (k = 1; k <= m.numKeys; k++) times.push(m.keyTime(k));
             return { times: times, end: comp.duration, source: "la composition" };
         }
         return null;
     }
 
-    function centerTextLayer(layer, comp, yRatio) {
+    // Centre le texte au milieu de l'image
+    function centerTextLayer(layer, comp) {
         var r = layer.sourceRectAtTime(layer.inPoint, false);
         var tr = layer.property("ADBE Transform Group");
         tr.property("ADBE Anchor Point").setValue([r.left + r.width / 2, r.top + r.height / 2]);
-        tr.property("ADBE Position").setValue([comp.width / 2, comp.height * yRatio]);
+        tr.property("ADBE Position").setValue([comp.width / 2, comp.height / 2]);
     }
 
-    function createLyrics(comp, rawText, fontSize, yRatio, preset) {
+    function createLyrics(comp, rawText, fontSize, preset) {
         var rawLines = String(rawText).split(/\r\n|\r|\n/);
         var lines = [];
         for (var i = 0; i < rawLines.length; i++) {
@@ -235,79 +297,22 @@
             td.applyFill = true;
             td.fillColor = [1, 1, 1];
             td.justification = ParagraphJustification.CENTER_JUSTIFY;
-            if (preset && preset.type === "style") setStyle(td, preset.style);
-            td.justification = ParagraphJustification.CENTER_JUSTIFY;
             prop.setValue(td);
 
             t.inPoint = start;
             t.outPoint = end;
             t.label = 9;
-            centerTextLayer(t, comp, yRatio);
+            centerTextLayer(t, comp);
             created.push(t);
         }
 
-        if (preset && preset.type === "ffx" && created.length) {
-            applyPresetToLayers(comp, preset, created);
-        }
+        if (preset && created.length) applyPresetToLayers(comp, preset, created);
 
         var msg = created.length + " texte(s) créé(s) depuis les marqueurs de " + mk.source + ".";
         if (lines.length > mk.times.length) {
             msg += "\n" + (lines.length - mk.times.length) + " ligne(s) sans marqueur ignorée(s).";
         }
         return msg;
-    }
-
-    // =====================================================================
-    // Fenêtre « + Preset »
-    // =====================================================================
-
-    function askNewPreset() {
-        var dlg = new Window("dialog", "Nouveau preset de texte");
-        dlg.orientation = "column";
-        dlg.alignChildren = ["fill", "top"];
-
-        var gName = dlg.add("group");
-        gName.add("statictext", undefined, "Nom :");
-        var etName = gName.add("edittext", undefined, "");
-        etName.characters = 24;
-
-        var gType = dlg.add("panel", undefined, "Source du preset");
-        gType.alignChildren = ["left", "top"];
-        var rbStyle = gType.add("radiobutton", undefined, "Style du texte sélectionné (police, taille, couleur, contour…)");
-        var rbFfx = gType.add("radiobutton", undefined, "Fichier de preset d'animation (.ffx)");
-        rbStyle.value = true;
-
-        var gBtn = dlg.add("group");
-        gBtn.alignment = ["right", "top"];
-        gBtn.add("button", undefined, "Annuler", { name: "cancel" });
-        gBtn.add("button", undefined, "OK", { name: "ok" });
-
-        if (dlg.show() !== 1) return null;
-
-        var name = trim(etName.text);
-
-        if (rbStyle.value) {
-            var comp = getActiveComp();
-            var layer = null;
-            if (comp) {
-                var sel = comp.selectedLayers;
-                for (var i = 0; i < sel.length; i++) {
-                    if (sel[i] instanceof TextLayer) { layer = sel[i]; break; }
-                }
-            }
-            if (!layer) { alert("Sélectionne d'abord un calque texte dont tu veux copier le style."); return null; }
-            var style = captureStyle(getTextDocProp(layer).value);
-            if (!name) name = (style.font || "Style") + " " + Math.round(style.fontSize || 0) + "px";
-            return { name: name, type: "style", style: style };
-        }
-
-        var filter = isWindows()
-            ? "Presets After Effects:*.ffx"
-            : function (f) { return (f instanceof Folder) || /\.ffx$/i.test(f.name); };
-        var f = File.openDialog("Choisis un preset .ffx", filter);
-        if (!f) return null;
-        if (!name) name = decodeURI(f.name).replace(/\.ffx$/i, "");
-        return { name: name, type: "ffx", path: f.fsName };
     }
 
     // =====================================================================
@@ -333,8 +338,6 @@
         pAdj.margins = [10, 15, 10, 10];
         var btnAdj = pAdj.add("button", undefined, "Créer sur le(s) calque(s) sélectionné(s)");
         btnAdj.helpTip = "Clique sur une vidéo (ou n'importe quel calque) dans la timeline, puis sur ce bouton";
-        var chkAbove = pAdj.add("checkbox", undefined, "Placer juste au-dessus du calque");
-        chkAbove.value = true;
 
         // ---------- Paroles ----------
         var pLyr = win.add("panel", undefined, "Paroles");
@@ -345,9 +348,6 @@
         etLyrics.preferredSize = [260, 120];
 
         var gOpt = pLyr.add("group");
-        gOpt.add("statictext", undefined, "Position :");
-        var ddPos = gOpt.add("dropdownlist", undefined, [POSITIONS[0].label, POSITIONS[1].label, POSITIONS[2].label]);
-        ddPos.selection = 0;
         gOpt.add("statictext", undefined, "Taille :");
         var etSize = gOpt.add("edittext", undefined, "70");
         etSize.characters = 4;
@@ -358,7 +358,7 @@
         var btnLyrics = pLyr.add("button", undefined, "Créer les paroles");
 
         // ---------- Presets ----------
-        var pPre = win.add("panel", undefined, "Presets de texte");
+        var pPre = win.add("panel", undefined, "Presets de texte (.ffx)");
         pPre.alignChildren = ["fill", "top"];
         pPre.margins = [10, 15, 10, 10];
         var gPre = pPre.add("group");
@@ -368,11 +368,13 @@
         ddPreset.preferredSize.width = 150;
         var btnAddPreset = gPre.add("button", undefined, "+ Preset");
         btnAddPreset.alignment = ["right", "center"];
+        btnAddPreset.helpTip = "Ajouter un ou plusieurs fichiers .ffx à la liste";
         var btnDelPreset = gPre.add("button", undefined, "–");
         btnDelPreset.alignment = ["right", "center"];
         btnDelPreset.preferredSize.width = 28;
-        btnDelPreset.helpTip = "Supprimer le preset choisi";
+        btnDelPreset.helpTip = "Retirer le preset choisi de la liste";
         var btnApply = pPre.add("button", undefined, "Appliquer aux textes sélectionnés");
+        btnApply.helpTip = "Le preset démarre au début du texte et son animation est étirée jusqu'à la fin";
 
         var status = win.add("statictext", undefined, "", { multiline: true });
         status.preferredSize.height = 34;
@@ -381,10 +383,7 @@
 
         function refreshPresetList(selectIndex) {
             ddPreset.removeAll();
-            for (var i = 0; i < presets.length; i++) {
-                var tag = (presets[i].type === "ffx") ? " [ffx]" : "";
-                ddPreset.add("item", presets[i].name + tag);
-            }
+            for (var i = 0; i < presets.length; i++) ddPreset.add("item", presets[i].name);
             if (presets.length) {
                 if (selectIndex === undefined || selectIndex < 0 || selectIndex >= presets.length) selectIndex = 0;
                 ddPreset.selection = selectIndex;
@@ -409,7 +408,7 @@
             var count = 0;
             try {
                 for (var j = 0; j < targets.length; j++) {
-                    createAdjustmentFor(comp, targets[j], chkAbove.value);
+                    createAdjustmentFor(comp, targets[j]);
                     count++;
                 }
             } catch (e) {
@@ -426,11 +425,11 @@
             var size = parseFloat(etSize.text);
             if (isNaN(size) || size <= 0) size = 70;
             var preset = chkLyrPreset.value ? selectedPreset() : null;
-            if (chkLyrPreset.value && !preset) { alert("Aucun preset choisi : ajoute-en un avec « + Preset »."); return; }
+            if (chkLyrPreset.value && !preset) { alert("Aucun preset : ajoute un fichier .ffx avec « + Preset »."); return; }
 
             app.beginUndoGroup("Créer les paroles");
             try {
-                status.text = createLyrics(comp, etLyrics.text, size, POSITIONS[ddPos.selection.index].y, preset);
+                status.text = createLyrics(comp, etLyrics.text, size, preset);
             } catch (e) {
                 alert(e.message);
             } finally {
@@ -439,30 +438,47 @@
         };
 
         btnAddPreset.onClick = function () {
-            var p = askNewPreset();
-            if (!p) return;
-            presets.push(p);
+            var filter = isWindows()
+                ? "Presets After Effects:*.ffx"
+                : function (f) { return (f instanceof Folder) || /\.ffx$/i.test(f.name); };
+            var files = File.openDialog("Choisis un ou plusieurs presets .ffx", filter, true);
+            if (!files) return;
+            if (!(files instanceof Array)) files = [files];
+
+            var added = 0;
+            for (var i = 0; i < files.length; i++) {
+                var f = files[i];
+                if (!/\.ffx$/i.test(f.name)) continue;
+                var exists = false;
+                for (var j = 0; j < presets.length; j++) {
+                    if (presets[j].path === f.fsName) { exists = true; break; }
+                }
+                if (exists) continue;
+                presets.push({ name: decodeURI(f.name).replace(/\.ffx$/i, ""), path: f.fsName });
+                added++;
+            }
+            if (!added) { status.text = "Aucun nouveau preset ajouté."; return; }
             savePresets();
             refreshPresetList(presets.length - 1);
-            status.text = "Preset « " + p.name + " » ajouté.";
+            status.text = added + " preset(s) ajouté(s).";
         };
 
         btnDelPreset.onClick = function () {
             if (!ddPreset.selection) return;
             var idx = ddPreset.selection.index;
             var p = presets[idx];
-            if (!confirm("Supprimer le preset « " + p.name + " » ?")) return;
+            if (!confirm("Retirer « " + p.name + " » de la liste ?\n(le fichier .ffx n'est pas supprimé)")) return;
             presets.splice(idx, 1);
             savePresets();
             refreshPresetList(idx - 1);
-            status.text = "Preset supprimé.";
+            status.text = "Preset retiré de la liste.";
         };
 
         btnApply.onClick = function () {
             var comp = getActiveComp();
             if (!comp) { alert("Ouvre d'abord une composition."); return; }
             var preset = selectedPreset();
-            if (!preset) { alert("Ajoute d'abord un preset avec « + Preset »."); return; }
+            if (!preset) { alert("Ajoute d'abord un fichier .ffx avec « + Preset »."); return; }
 
             var sel = comp.selectedLayers;
             var texts = [];
@@ -474,7 +490,7 @@
             app.beginUndoGroup("Appliquer preset texte");
             try {
                 applyPresetToLayers(comp, preset, texts);
-                status.text = "Preset « " + preset.name + " » appliqué à " + texts.length + " texte(s).";
+                status.text = "« " + preset.name + " » appliqué à " + texts.length + " texte(s).";
             } catch (e) {
                 alert("Erreur : " + e.message);
             } finally {
