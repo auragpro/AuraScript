@@ -1,7 +1,8 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.2.0
-// nouveautes: Nouvelle grille d'alignement (9 carrés) : place les calques sélectionnés au centre, sur un côté ou dans un coin
-// nouveautes: Marge réglable pour l'alignement sur les bords
+// version: 1.3.0
+// nouveautes: Le bouton « Adjus. layer » est maintenant à droite de la grille d'alignement
+// nouveautes: La grille d'alignement déplace tous les calques sélectionnés (parentés, verrouillés, caméras, lumières…)
+// nouveautes: Marge supprimée : les calques se collent directement aux bords
 // nouveautes: Le calque d'effet se place toujours juste au-dessus du calque sélectionné
 // nouveautes: Les paroles sont toujours centrées au milieu de l'image
 // nouveautes: Presets de texte : « + Preset » ajoute directement tes fichiers .ffx
@@ -256,7 +257,7 @@
         return { sep: false, p: pos };
     }
 
-    // Rectangle du calque dans la composition (hors rotation et parentage)
+    // Rectangle du calque dans la composition (hors rotation)
     function layerRect(layer, t) {
         var r;
         if (layer instanceof TextLayer || layer instanceof ShapeLayer) {
@@ -264,11 +265,12 @@
         } else if (layer.source && layer.source.width) {
             r = { left: 0, top: 0, width: layer.source.width, height: layer.source.height };
         } else {
-            return null; // caméra, lumière…
+            r = null; // caméra, lumière : on aligne leur point de position
         }
         var tr = layer.property("ADBE Transform Group");
-        var a = tr.property("ADBE Anchor Point").valueAtTime(t, false);
-        var s = tr.property("ADBE Scale").valueAtTime(t, false);
+        var a = r ? tr.property("ADBE Anchor Point").valueAtTime(t, false) : [0, 0];
+        var s = r ? tr.property("ADBE Scale").valueAtTime(t, false) : [100, 100];
+        if (!r) r = { left: 0, top: 0, width: 0, height: 0 };
         var pp = getPosProps(layer);
         var px, py;
         if (pp.sep) {
@@ -319,19 +321,28 @@
     }
 
     // h : 0 gauche, 1 centre, 2 droite — v : 0 haut, 1 milieu, 2 bas
-    function alignLayers(comp, h, v, margin) {
+    function alignLayers(comp, h, v) {
         var sel = comp.selectedLayers;
         var t = comp.time;
         var moved = 0, skipped = 0;
         for (var i = 0; i < sel.length; i++) {
             var layer = sel[i];
-            if (layer.parent) { skipped++; continue; }
-            var r = layerRect(layer, t);
-            if (!r) { skipped++; continue; }
-            var tx = (h === 0) ? margin : (h === 1) ? (comp.width - r.width) / 2 : comp.width - margin - r.width;
-            var ty = (v === 0) ? margin : (v === 1) ? (comp.height - r.height) / 2 : comp.height - margin - r.height;
-            moveLayerBy(layer, tx - r.left, ty - r.top);
-            moved++;
+            var wasLocked = layer.locked;
+            var parent = layer.parent;
+            try {
+                if (wasLocked) layer.locked = false;
+                // Calque parenté : on le détache le temps du calcul, puis on le rattache sans le faire bouger
+                if (parent) layer.setParentWithJump();
+                var r = layerRect(layer, t);
+                var tx = (h === 0) ? 0 : (h === 1) ? (comp.width - r.width) / 2 : comp.width - r.width;
+                var ty = (v === 0) ? 0 : (v === 1) ? (comp.height - r.height) / 2 : comp.height - r.height;
+                moveLayerBy(layer, tx - r.left, ty - r.top);
+                moved++;
+            } catch (e) {
+                skipped++;
+            }
+            try { if (parent && !layer.parent) layer.setParentWithJump(parent); } catch (e2) {}
+            try { if (wasLocked) layer.locked = true; } catch (e3) {}
         }
         return { moved: moved, skipped: skipped };
     }
@@ -359,6 +370,29 @@
         g.moveTo(cx, cy - s);
         g.lineTo(cx, cy + s);
         g.strokePath(plus);
+    }
+
+    // Dessine le carré « Adjus. layer »
+    function drawAdjCell() {
+        var g = this.graphics;
+        var w = this.size[0], h = this.size[1];
+        var bg = g.newBrush(g.BrushType.SOLID_COLOR, [0.17, 0.17, 0.17, 1]);
+        var border = g.newPen(g.PenType.SOLID_COLOR, [0.55, 0.55, 0.55, 1], 1);
+        var txt = g.newPen(g.PenType.SOLID_COLOR, [0.9, 0.9, 0.9, 1], 1);
+        g.newPath();
+        g.rectPath(0, 0, w, h);
+        g.fillPath(bg);
+        g.newPath();
+        g.rectPath(0.5, 0.5, w - 1, h - 1);
+        g.strokePath(border);
+        var font = ScriptUI.newFont("dialog", "BOLD", 12);
+        var lines = ["Adjus.", "layer"];
+        var lh = 16;
+        var y0 = Math.round((h - lh * lines.length) / 2);
+        for (var i = 0; i < lines.length; i++) {
+            var m = g.measureString(lines[i], font);
+            g.drawString(lines[i], txt, Math.round((w - m[0]) / 2), y0 + i * lh, font);
+        }
     }
 
     // =====================================================================
@@ -458,13 +492,6 @@
         win.spacing = 8;
         if (!host) win.margins = 10;
 
-        // ---------- Calque d'effet ----------
-        var pAdj = win.add("panel", undefined, "Calque d'effet");
-        pAdj.alignChildren = ["fill", "top"];
-        pAdj.margins = [10, 15, 10, 10];
-        var btnAdj = pAdj.add("button", undefined, "Créer sur le(s) calque(s) sélectionné(s)");
-        btnAdj.helpTip = "Clique sur une vidéo (ou n'importe quel calque) dans la timeline, puis sur ce bouton";
-
         // ---------- Alignement ----------
         var pAli = win.add("panel", undefined, "Alignement");
         pAli.orientation = "row";
@@ -492,15 +519,10 @@
             }
         }
 
-        var gMargin = pAli.add("group");
-        gMargin.orientation = "column";
-        gMargin.alignChildren = ["left", "top"];
-        var gMarginRow = gMargin.add("group");
-        gMarginRow.add("statictext", undefined, "Marge :");
-        var etMargin = gMarginRow.add("edittext", undefined, "0");
-        etMargin.characters = 4;
-        gMarginRow.add("statictext", undefined, "px");
-        gMargin.add("statictext", undefined, "Sélectionne des calques,\npuis clique un carré.", { multiline: true });
+        var btnAdj = pAli.add("button", undefined, "Adjus. layer");
+        btnAdj.preferredSize = [84, 84];
+        btnAdj.helpTip = "Crée un calque d'effet au-dessus du/des calque(s) sélectionné(s), avec la même durée";
+        try { btnAdj.onDraw = drawAdjCell; } catch (e) {}
 
         // ---------- Paroles ----------
         var pLyr = win.add("panel", undefined, "Paroles");
@@ -586,14 +608,12 @@
             var comp = getActiveComp();
             if (!comp) { alert("Ouvre d'abord une composition."); return; }
             if (!comp.selectedLayers.length) { alert("Sélectionne d'abord un ou plusieurs calques."); return; }
-            var margin = parseFloat(etMargin.text);
-            if (isNaN(margin)) margin = 0;
 
             app.beginUndoGroup("Aligner : " + ALIGN_LABELS[this.alignV][this.alignH]);
             try {
-                var res = alignLayers(comp, this.alignH, this.alignV, margin);
+                var res = alignLayers(comp, this.alignH, this.alignV);
                 status.text = res.moved + " calque(s) placé(s) : " + ALIGN_LABELS[this.alignV][this.alignH] + ".";
-                if (res.skipped) status.text += "\n" + res.skipped + " ignoré(s) (parenté, caméra ou lumière).";
+                if (res.skipped) status.text += "\n" + res.skipped + " n'a (n'ont) pas pu être déplacé(s).";
             } catch (e) {
                 alert("Erreur : " + e.message);
             } finally {
