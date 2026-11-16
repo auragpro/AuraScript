@@ -1,8 +1,6 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.5.0
-// nouveautes: Nouvelle interface minimaliste noir et blanc
-// nouveautes: Boutons qui s'éclairent au survol et au clic
-// nouveautes: Sections Alignement, Lyrics et Presets plus lisibles
+// version: 1.5.1
+// nouveautes: Plus d'effet de lumière au survol ou au clic : les boutons restent sobres
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -408,7 +406,7 @@
     }
 
     // =====================================================================
-    // Thème : noir et blanc minimaliste, touches de lumière au survol
+    // Thème : noir et blanc minimaliste
     // =====================================================================
 
     var THEME = {
@@ -477,15 +475,11 @@
     function drawThemedButton(btn, kind, isCenter, ds) {
         var g = btn.graphics;
         var w = btn.size[0], h = btn.size[1];
-        var over = false, down = false;
-        try { over = ds.mouseOver; down = ds.leftButtonPressed; } catch (e) {}
-
+        // Rendu fixe : aucun effet au survol ou au clic
         // (if/else plutôt que « ? : » imbriqués, qu'After Effects lit mal)
         var fillV, borderV, inkV;
         if (kind === "primary") {
             fillV = 0.88;
-            if (over) fillV = 1;
-            if (down) fillV = 0.72;
             borderV = fillV;
             inkV = 0.06;
         } else {
@@ -493,8 +487,6 @@
             borderV = THEME.border;
             inkV = THEME.text;
             if (isCenter) borderV = 0.45;
-            if (over) { fillV = THEME.btnOver; borderV = THEME.borderOver; inkV = 1; }
-            if (down) { fillV = THEME.btnDown; borderV = THEME.borderOver; inkV = 1; }
         }
 
         g.newPath();
@@ -504,13 +496,6 @@
         g.newPath();
         g.rectPath(0.5, 0.5, w - 1, h - 1);
         g.strokePath(g.newPen(g.PenType.SOLID_COLOR, grey(borderV), 1));
-
-        // halo lumineux discret au survol
-        if ((over || down) && kind !== "primary") {
-            g.newPath();
-            g.rectPath(1.5, 1.5, w - 3, h - 3);
-            g.strokePath(g.newPen(g.PenType.SOLID_COLOR, grey(1, 0.18), 1));
-        }
 
         var ink = g.newPen(g.PenType.SOLID_COLOR, grey(inkV), (kind === "plus") ? 2 : 1);
         if (kind === "plus") {
