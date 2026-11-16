@@ -1,6 +1,6 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.6.5
-// nouveautes: Déprecomp ne coupe plus rien : le contenu du precomp ressort exactement comme il est dedans
+// version: 1.6.6
+// nouveautes: Déprecomp : les calques ressortent exactement au même endroit dans la timeline, sans être coupés ni déplacés
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -415,6 +415,7 @@
         try {
             var fx = layer.property("ADBE Effect Parade");
             if (fx && fx.numProperties > 0) return true;
+            if (layer.timeRemapEnabled) return true;
             var tr = layer.property("ADBE Transform Group");
             for (var i = 1; i <= tr.numProperties; i++) {
                 if (tr.property(i).numKeys > 0) return true;
@@ -423,17 +424,30 @@
         return false;
     }
 
+    function setLayerSpan(l, tIn, tOut) {
+        try { l.outPoint = tOut; } catch (e) {}
+        try { l.inPoint = tIn; } catch (e2) {}
+        try { l.outPoint = tOut; } catch (e3) {}
+    }
+
     // Remet le contenu d'un precomp dans la composition, à sa place
     function uncompose(comp, layer) {
         var src = layer.source;
         var off = layer.startTime;
+        var k = 1;
+        try { k = layer.stretch / 100; } catch (eS) {}
         var map = {};
         var created = [];
         for (var i = 1; i <= src.numLayers; i++) {
             var L = src.layer(i);
             L.copyToComp(comp);
             var nl = comp.layer(1);
-            nl.startTime = nl.startTime + off;
+            // on recalcule les temps depuis le calque d'origine (copyToComp ne les garde pas toujours)
+            try { if (k !== 1) nl.stretch = L.stretch * k; } catch (eS2) {}
+            nl.startTime = off + L.startTime * k;
+            var a = off + L.inPoint * k, b = off + L.outPoint * k;
+            if (k < 0) { var tmp = a; a = b; b = tmp; }
+            setLayerSpan(nl, a, b);
             nl.moveBefore(layer);
             map[L.index] = nl;
             created.push({ src: L, dst: nl });
@@ -2024,7 +2038,7 @@
             if (!targets.length) { alert("Sélectionne un calque precomp dans la timeline."); return; }
             var extras = false;
             for (var j = 0; j < targets.length; j++) if (hasLayerExtras(targets[j])) extras = true;
-            if (extras && !confirm("Les effets et animations posés sur le precomp lui-même seront perdus. Continuer ?")) return;
+            if (extras && !confirm("Les effets, animations ou le time remap posés sur le precomp lui-même seront perdus. Continuer ?")) return;
             app.beginUndoGroup("Déprecomp");
             try {
                 var total = 0;
