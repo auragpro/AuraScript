@@ -1,8 +1,8 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.3.0
-// nouveautes: Le bouton « Adjus. layer » est maintenant à droite de la grille d'alignement
-// nouveautes: La grille d'alignement déplace tous les calques sélectionnés (parentés, verrouillés, caméras, lumières…)
-// nouveautes: Marge supprimée : les calques se collent directement aux bords
+// version: 1.3.1
+// nouveautes: Correction : les 9 carrés d'alignement fonctionnent tous
+// nouveautes: Bouton « Adjustment layer » à droite de la grille d'alignement
+// nouveautes: Le calque d'effet garde le nom par défaut d'After Effects
 // nouveautes: Le calque d'effet se place toujours juste au-dessus du calque sélectionné
 // nouveautes: Les paroles sont toujours centrées au milieu de l'image
 // nouveautes: Presets de texte : « + Preset » ajoute directement tes fichiers .ffx
@@ -221,17 +221,58 @@
     // Calque d'effet
     // =====================================================================
 
+    // Crée un calque d'effet avec la commande d'After Effects (Calque > Nouveau > Calque d'effets),
+    // pour qu'il garde le nom par défaut
+    function newDefaultAdjustment(comp) {
+        var ids = [];
+        var names = ["Adjustment Layer", "Calque d'effets", "Calque d\u2019effets", "Calque d'effet"];
+        for (var i = 0; i < names.length; i++) {
+            try {
+                var id = app.findMenuCommandId(names[i]);
+                if (id) ids.push(id);
+            } catch (e) {}
+        }
+        ids.push(2279);
+        for (var j = 0; j < ids.length; j++) {
+            var before = comp.numLayers;
+            try { app.executeCommand(ids[j]); } catch (e2) { continue; }
+            if (comp.numLayers > before) {
+                var sel = comp.selectedLayers;
+                for (var k = 0; k < sel.length; k++) {
+                    if (sel[k].adjustmentLayer) return sel[k];
+                }
+                for (var n = 1; n <= comp.numLayers; n++) {
+                    if (comp.layer(n).adjustmentLayer) return comp.layer(n);
+                }
+            }
+        }
+        return null;
+    }
+
+    // Nom par défaut si la commande d'After Effects n'est pas disponible
+    function defaultAdjustmentName(comp) {
+        var max = 0;
+        for (var i = 1; i <= comp.numLayers; i++) {
+            var m = String(comp.layer(i).name).match(/^Adjustment Layer (\d+)$/);
+            if (m && parseInt(m[1], 10) > max) max = parseInt(m[1], 10);
+        }
+        return "Adjustment Layer " + (max + 1);
+    }
+
     function createAdjustmentFor(comp, srcLayer) {
         var inP = srcLayer.inPoint;
         var outP = srcLayer.outPoint;
-        var duration = outP - inP;
-        if (duration <= 0) throw new Error("Le calque « " + srcLayer.name + " » a une durée nulle.");
+        if (outP - inP <= 0) throw new Error("Le calque « " + srcLayer.name + " » a une durée nulle.");
 
-        var adj = comp.layers.addSolid([1, 1, 1], "Effets - " + srcLayer.name,
-            comp.width, comp.height, comp.pixelAspect, duration);
-        adj.adjustmentLayer = true;
-        adj.label = 5;
-        adj.startTime = inP;
+        deselectAll(comp);
+        srcLayer.selected = true;
+        var adj = newDefaultAdjustment(comp);
+        if (!adj) {
+            adj = comp.layers.addSolid([1, 1, 1], defaultAdjustmentName(comp),
+                comp.width, comp.height, comp.pixelAspect, comp.duration);
+            adj.adjustmentLayer = true;
+        }
+        // Le calque d'effet couvre exactement la durée du calque choisi
         adj.inPoint = inP;
         adj.outPoint = outP;
         adj.moveBefore(srcLayer);
@@ -322,6 +363,8 @@
 
     // h : 0 gauche, 1 centre, 2 droite — v : 0 haut, 1 milieu, 2 bas
     function alignLayers(comp, h, v) {
+        h = Number(h);
+        v = Number(v);
         var sel = comp.selectedLayers;
         var t = comp.time;
         var moved = 0, skipped = 0;
@@ -348,10 +391,14 @@
     }
 
     // Dessine un carré avec un « + » au milieu
-    function drawPlusCell() {
-        var g = this.graphics;
-        var w = this.size[0], h = this.size[1];
-        var bg = g.newBrush(g.BrushType.SOLID_COLOR, this.isCenter ? [0.24, 0.24, 0.24, 1] : [0.17, 0.17, 0.17, 1]);
+    function makePlusDraw(isCenter) {
+        return function () { drawPlusCell(this, isCenter); };
+    }
+
+    function drawPlusCell(btn, isCenter) {
+        var g = btn.graphics;
+        var w = btn.size[0], h = btn.size[1];
+        var bg = g.newBrush(g.BrushType.SOLID_COLOR, isCenter ? [0.24, 0.24, 0.24, 1] : [0.17, 0.17, 0.17, 1]);
         var border = g.newPen(g.PenType.SOLID_COLOR, [0.55, 0.55, 0.55, 1], 1);
         var plus = g.newPen(g.PenType.SOLID_COLOR, [0.9, 0.9, 0.9, 1], 2);
         g.newPath();
@@ -372,28 +419,6 @@
         g.strokePath(plus);
     }
 
-    // Dessine le carré « Adjus. layer »
-    function drawAdjCell() {
-        var g = this.graphics;
-        var w = this.size[0], h = this.size[1];
-        var bg = g.newBrush(g.BrushType.SOLID_COLOR, [0.17, 0.17, 0.17, 1]);
-        var border = g.newPen(g.PenType.SOLID_COLOR, [0.55, 0.55, 0.55, 1], 1);
-        var txt = g.newPen(g.PenType.SOLID_COLOR, [0.9, 0.9, 0.9, 1], 1);
-        g.newPath();
-        g.rectPath(0, 0, w, h);
-        g.fillPath(bg);
-        g.newPath();
-        g.rectPath(0.5, 0.5, w - 1, h - 1);
-        g.strokePath(border);
-        var font = ScriptUI.newFont("dialog", "BOLD", 12);
-        var lines = ["Adjus.", "layer"];
-        var lh = 16;
-        var y0 = Math.round((h - lh * lines.length) / 2);
-        for (var i = 0; i < lines.length; i++) {
-            var m = g.measureString(lines[i], font);
-            g.drawString(lines[i], txt, Math.round((w - m[0]) / 2), y0 + i * lh, font);
-        }
-    }
 
     // =====================================================================
     // Paroles
@@ -502,7 +527,6 @@
         var grid = pAli.add("group");
         grid.orientation = "column";
         grid.spacing = 3;
-        var alignCells = [];
         for (var gv = 0; gv < 3; gv++) {
             var gRow = grid.add("group");
             gRow.orientation = "row";
@@ -511,18 +535,14 @@
                 var cell = gRow.add("button", undefined, "+");
                 cell.preferredSize = [26, 26];
                 cell.helpTip = ALIGN_LABELS[gv][gh];
-                cell.alignH = gh;
-                cell.alignV = gv;
-                cell.isCenter = (gh === 1 && gv === 1);
-                try { cell.onDraw = drawPlusCell; } catch (e) {}
-                alignCells.push(cell);
+                try { cell.onDraw = makePlusDraw(gh === 1 && gv === 1); } catch (e) {}
+                cell.onClick = makeAlignHandler(gh, gv);
             }
         }
 
-        var btnAdj = pAli.add("button", undefined, "Adjus. layer");
-        btnAdj.preferredSize = [84, 84];
+        var btnAdj = pAli.add("button", undefined, "Adjustment layer");
+        btnAdj.preferredSize = [130, 28];
         btnAdj.helpTip = "Crée un calque d'effet au-dessus du/des calque(s) sélectionné(s), avec la même durée";
-        try { btnAdj.onDraw = drawAdjCell; } catch (e) {}
 
         // ---------- Paroles ----------
         var pLyr = win.add("panel", undefined, "Paroles");
@@ -604,23 +624,25 @@
             status.text = count + " calque(s) d'effet créé(s).";
         };
 
-        function onAlignClick() {
-            var comp = getActiveComp();
-            if (!comp) { alert("Ouvre d'abord une composition."); return; }
-            if (!comp.selectedLayers.length) { alert("Sélectionne d'abord un ou plusieurs calques."); return; }
+        // Chaque carré garde sa propre position (h, v) grâce à une fonction dédiée
+        function makeAlignHandler(h, v) {
+            return function () {
+                var comp = getActiveComp();
+                if (!comp) { alert("Ouvre d'abord une composition."); return; }
+                if (!comp.selectedLayers.length) { alert("Sélectionne d'abord un ou plusieurs calques."); return; }
 
-            app.beginUndoGroup("Aligner : " + ALIGN_LABELS[this.alignV][this.alignH]);
-            try {
-                var res = alignLayers(comp, this.alignH, this.alignV);
-                status.text = res.moved + " calque(s) placé(s) : " + ALIGN_LABELS[this.alignV][this.alignH] + ".";
-                if (res.skipped) status.text += "\n" + res.skipped + " n'a (n'ont) pas pu être déplacé(s).";
-            } catch (e) {
-                alert("Erreur : " + e.message);
-            } finally {
-                app.endUndoGroup();
-            }
+                app.beginUndoGroup("Aligner : " + ALIGN_LABELS[v][h]);
+                try {
+                    var res = alignLayers(comp, h, v);
+                    status.text = res.moved + " calque(s) placé(s) : " + ALIGN_LABELS[v][h] + ".";
+                    if (res.skipped) status.text += "\n" + res.skipped + " n'a (n'ont) pas pu être déplacé(s).";
+                } catch (e) {
+                    alert("Erreur : " + e.message);
+                } finally {
+                    app.endUndoGroup();
+                }
+            };
         }
-        for (var ac = 0; ac < alignCells.length; ac++) alignCells[ac].onClick = onAlignClick;
 
         btnLyrics.onClick = function () {
             var comp = getActiveComp();
