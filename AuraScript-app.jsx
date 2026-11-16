@@ -1,8 +1,9 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.6.1
-// nouveautes: Correction : la poignée de la courbe se lâche bien quand tu relâches la souris
-// nouveautes: Nouvel onglet COURBE : éditeur Bézier visuel avec poignées à faire glisser
-// nouveautes: Modes Normal, Reverse et Aller-retour, bibliothèque de courbes et import Flow (onglet BIBLIO)
+// version: 1.6.2
+// nouveautes: La bibliothèque de courbes est maintenant dans l'onglet COURBE (moins de place)
+// nouveautes: Bouton « Import flow curves » pour importer tes courbes Flow
+// nouveautes: Interface allégée : boutons Inverser, Dupliquer, Dossier et Ma biblio Flow retirés
+// nouveautes: Correction : la poignée de la courbe suit la souris pendant l'appui et se lâche au relâchement
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -1215,43 +1216,26 @@
     // Page « Courbe »
     // =====================================================================
 
-    function buildCurvePage(page, libPage, setStatus) {
+    function buildCurvePage(page, setStatus) {
         loadCurveLib();
 
         var st = {
             curve: defaultCurve(),  // courbe en cours d'édition (copie)
             mode: "normal",         // normal | reverse | alternate
-            libFilter: 0,           // index dans la liste des bibliothèques (0 = toutes)
-            listIds: [],            // ids affichés dans la liste
+            quickIds: [],           // ids des courbes dans la liste déroulante
+            quickLock: false,
             drag: null
         };
 
-        // ---------- Bibliothèque (onglet BIBLIO) ----------
-        var sLib = addSection(libPage, "BIBLIOTHÈQUE");
-        var ddLib = sLib.add("dropdownlist", undefined, []);
-        ddLib.alignment = ["fill", "top"];
-        var lbCurves = sLib.add("listbox", undefined, []);
-        lbCurves.preferredSize = [280, 190];
-        var gLibBtns = sLib.add("group");
-        gLibBtns.orientation = "row";
-        gLibBtns.spacing = 4;
-        var btnNew = themeButton(gLibBtns.add("button", undefined, "Nouvelle"));
-        btnNew.preferredSize = [86, 24];
-        var btnDup = themeButton(gLibBtns.add("button", undefined, "Dupliquer"));
-        btnDup.preferredSize = [86, 24];
-        var btnDel = themeButton(gLibBtns.add("button", undefined, "Supprimer"));
-        btnDel.preferredSize = [86, 24];
-
-        // ---------- Éditeur (onglet COURBE) ----------
-        var sEd = page;
-        var gName = sEd.add("group");
+        // ---------- Bibliothèque : liste + actions ----------
+        var gName = page.add("group");
         gName.orientation = "row";
         gName.alignChildren = ["fill", "center"];
         gName.spacing = 4;
         var ddQuick = gName.add("dropdownlist", undefined, []);
         ddQuick.alignment = ["fill", "center"];
         ddQuick.preferredSize.width = 170;
-        ddQuick.helpTip = "Choisis une courbe enregistrée";
+        ddQuick.helpTip = "Ta bibliothèque de courbes : choisis une courbe à charger";
         var tKeys = gName.add("statictext", undefined, "Clés");
         tKeys.alignment = ["right", "center"];
         paintText(tKeys, THEME.label);
@@ -1260,12 +1244,30 @@
         var btnK3 = addToggle(gName, "3", function () { return st.curve.keys === 3; }, 26);
         btnK3.alignment = ["right", "center"];
 
-        var canvas = sEd.add("button", undefined, "");
+        var gLib = page.add("group");
+        gLib.orientation = "row";
+        gLib.spacing = 4;
+        var btnNew = themeButton(gLib.add("button", undefined, "Nouvelle"));
+        btnNew.preferredSize = [70, 24];
+        btnNew.helpTip = "Repartir d'une courbe vierge";
+        var btnDel = themeButton(gLib.add("button", undefined, "Supprimer"));
+        btnDel.preferredSize = [76, 24];
+        btnDel.helpTip = "Supprimer la courbe choisie de la bibliothèque";
+        var btnImpFile = themeButton(gLib.add("button", undefined, "Import flow curves"));
+        btnImpFile.preferredSize = [126, 24];
+        btnImpFile.helpTip = "Importe tes courbes Flow depuis un fichier .flow ou .json";
+
+        // ---------- Éditeur ----------
+        // Zone de dessin (un groupe, pas un bouton : un bouton garde la souris pendant l'appui
+        // et l'éditeur ne voyait plus le glisser ni le relâchement)
+        var canvas = page.add("group");
         canvas.preferredSize = [GRAPH.w, GRAPH.h];
+        canvas.minimumSize = [GRAPH.w, GRAPH.h];
+        canvas.alignment = ["left", "top"];
         canvas.helpTip = "Fais glisser les poignées (petits carrés) et, en mode 3 clés, les clés blanches";
         try { canvas.onDraw = function () { drawEditor(this, st); }; } catch (e) {}
 
-        var gSeg1 = sEd.add("group");
+        var gSeg1 = page.add("group");
         gSeg1.orientation = "row";
         gSeg1.alignChildren = ["left", "center"];
         gSeg1.spacing = 4;
@@ -1280,16 +1282,14 @@
         etSeg2.preferredSize.width = 122;
         etSeg2.helpTip = "Transition 2 (courbes à 3 clés) : x1, y1, x2, y2";
 
-        var gEdBtns = sEd.add("group");
+        var gEdBtns = page.add("group");
         gEdBtns.orientation = "row";
         gEdBtns.spacing = 4;
-        var btnFlip = themeButton(gEdBtns.add("button", undefined, "Inverser"));
-        btnFlip.preferredSize = [86, 24];
-        btnFlip.helpTip = "Transforme la courbe en sa version reverse (miroir dans le temps)";
         var btnReset = themeButton(gEdBtns.add("button", undefined, "Réinitialiser"));
-        btnReset.preferredSize = [86, 24];
+        btnReset.preferredSize = [136, 24];
         var btnSave = themeButton(gEdBtns.add("button", undefined, "Enregistrer"), "primary");
-        btnSave.preferredSize = [86, 24];
+        btnSave.preferredSize = [136, 24];
+        btnSave.helpTip = "Enregistre la courbe dans ta bibliothèque";
 
         // ---------- Appliquer ----------
         var sApp = addSection(page, "APPLIQUER");
@@ -1310,21 +1310,6 @@
         var btnApplyCurve = themeButton(sApp.add("button", undefined, "Appliquer aux keyframes sélectionnées"), "primary");
         btnApplyCurve.preferredSize.height = 28;
 
-        // ---------- Import Flow (onglet BIBLIO) ----------
-        var sImp = addSection(libPage, "IMPORT FLOW");
-        var gImp = sImp.add("group");
-        gImp.orientation = "row";
-        gImp.spacing = 4;
-        var btnImpAuto = themeButton(gImp.add("button", undefined, "Ma biblio Flow"));
-        btnImpAuto.preferredSize = [86, 24];
-        btnImpAuto.helpTip = "Importe automatiquement toutes tes bibliothèques Flow installées sur ce PC";
-        var btnImpFile = themeButton(gImp.add("button", undefined, "Fichier…"));
-        btnImpFile.preferredSize = [86, 24];
-        btnImpFile.helpTip = "Importe un fichier .flow ou .json";
-        var btnImpFolder = themeButton(gImp.add("button", undefined, "Dossier…"));
-        btnImpFolder.preferredSize = [86, 24];
-        btnImpFolder.helpTip = "Importe tous les fichiers .flow / .json d'un dossier";
-
         // ---------- Logique ----------
 
         function refreshEditorFields() {
@@ -1342,51 +1327,17 @@
 
         function refreshAll() {
             refreshEditorFields();
-            repaint(canvas);
+            softRepaint();
             repaint(btnK2); repaint(btnK3);
             repaint(btnMNormal); repaint(btnMReverse); repaint(btnMAlt);
         }
 
-        function refreshLibraries(selectName) {
-            var names = libraryNames();
-            ddLib.removeAll();
-            ddLib.add("item", "Toutes les courbes");
-            var sel = 0;
-            for (var i = 0; i < names.length; i++) {
-                ddLib.add("item", names[i]);
-                if (selectName && names[i] === selectName) sel = i + 1;
-            }
-            if (!selectName && st.libFilter < ddLib.items.length) sel = st.libFilter;
-            st.libFilter = sel;
-            ddLib.selection = sel;
-            refreshList(null);
-        }
-
-        function refreshList(selectId) {
-            var names = libraryNames();
-            var libName = null;
-            if (st.libFilter > 0) libName = names[st.libFilter - 1];
-            lbCurves.removeAll();
-            st.listIds = [];
-            var selIndex = -1;
-            for (var i = 0; i < curveLib.length; i++) {
-                var c = curveLib[i];
-                if (libName && c.lib !== libName) continue;
-                var label = c.name;
-                if (c.keys === 3) label += "   · 3 clés";
-                if (!libName && c.lib !== MY_LIB) label += "   · " + c.lib;
-                lbCurves.add("item", label);
-                st.listIds.push(c.id);
-                if (selectId && c.id === selectId) selIndex = st.listIds.length - 1;
-            }
-            if (selIndex >= 0) lbCurves.selection = selIndex;
-        }
-
+        // Remplit la liste déroulante (= la bibliothèque)
         function refreshQuick(selectId) {
             ddQuick.removeAll();
             st.quickIds = [];
-            var selIndex = -1;
-            var it = ddQuick.add("item", "— Nouvelle courbe —");
+            var selIndex = 0;
+            ddQuick.add("item", "— Nouvelle courbe —");
             st.quickIds.push(null);
             for (var i = 0; i < curveLib.length; i++) {
                 var c = curveLib[i];
@@ -1398,7 +1349,7 @@
                 if (selectId && c.id === selectId) selIndex = st.quickIds.length - 1;
             }
             st.quickLock = true;
-            ddQuick.selection = (selIndex >= 0) ? selIndex : 0;
+            ddQuick.selection = selIndex;
             st.quickLock = false;
         }
 
@@ -1437,19 +1388,6 @@
             refreshAll();
         }
 
-        ddLib.onChange = function () {
-            if (!ddLib.selection) return;
-            st.libFilter = ddLib.selection.index;
-            refreshList(st.curve.id);
-        };
-
-        lbCurves.onChange = function () {
-            if (!lbCurves.selection) return;
-            var id = st.listIds[lbCurves.selection.index];
-            loadIntoEditor(id);
-            refreshQuick(id);
-        };
-
         ddQuick.onChange = function () {
             if (st.quickLock || !ddQuick.selection) return;
             var id = st.quickIds[ddQuick.selection.index];
@@ -1473,23 +1411,9 @@
 
         btnNew.onClick = function () {
             st.curve = defaultCurve();
-            lbCurves.selection = null;
             refreshQuick(null);
             refreshAll();
-            setStatus("Nouvelle courbe : dessine-la dans COURBE puis clique sur Enregistrer.");
-        };
-
-        btnDup.onClick = function () {
-            readFields();
-            var c = cloneCurve(st.curve);
-            c.id = null;
-            c.name = (c.name ? c.name : "Courbe") + " copie";
-            c.lib = MY_LIB;
-            st.curve = c;
-            lbCurves.selection = null;
-            refreshQuick(null);
-            refreshAll();
-            setStatus("Copie prête : clique sur Enregistrer (onglet COURBE) pour la garder.");
+            setStatus("Nouvelle courbe : dessine-la puis clique sur Enregistrer.");
         };
 
         btnDel.onClick = function () {
@@ -1498,26 +1422,9 @@
             curveLib.splice(findCurveIndex(st.curve.id), 1);
             saveCurveLib();
             st.curve = defaultCurve();
-            refreshLibraries(null);
             refreshQuick(null);
             refreshAll();
             setStatus("Courbe supprimée.");
-        };
-
-        btnFlip.onClick = function () {
-            readFields();
-            var c = st.curve;
-            if (c.keys === 2) {
-                c.segs = [mirrorBez(c.segs[0])];
-            } else {
-                var a = mirrorBez(c.segs[1]), b = mirrorBez(c.segs[0]);
-                var ev = c.end;
-                c.segs = [a, b];
-                c.mid = [1 - c.mid[0], c.mid[1] - ev];
-                c.end = -ev;
-                fixThreeKeyValues(c);
-            }
-            refreshAll();
         };
 
         btnReset.onClick = function () {
@@ -1554,10 +1461,8 @@
                 alert("Impossible d'enregistrer la bibliothèque.\n\nVérifie l'option :\nPréférences > Scripts et expressions >\n« Autoriser les scripts à écrire des fichiers et à accéder au réseau »");
                 return;
             }
-            refreshLibraries(null);
-            refreshList(saved.id);
             refreshQuick(saved.id);
-            setStatus("Courbe « " + saved.name + " » enregistrée dans " + saved.lib + ".");
+            setStatus("Courbe « " + saved.name + " » enregistrée.");
         };
 
         btnApplyCurve.onClick = function () {
@@ -1582,39 +1487,26 @@
             }
         };
 
-        function afterImport(added, found, libHint) {
-            if (!found) { alert("Aucune courbe trouvée."); return; }
-            saveCurveLib();
-            refreshLibraries(libHint);
-            refreshQuick(st.curve.id);
-            setStatus(added + " courbe(s) importée(s)" + ((found > added) ? " (" + (found - added) + " déjà présente(s))" : "") + ".");
-        }
-
-        btnImpAuto.onClick = function () {
-            var folder = flowLibraryFolder();
-            if (!folder.exists) {
-                alert("Aucune bibliothèque Flow trouvée sur ce PC.\nUtilise « Fichier… » ou « Dossier… » pour choisir tes presets.");
-                return;
-            }
-            var r = importFlowFolder(folder);
-            afterImport(r.added, r.found, null);
-        };
-
         btnImpFile.onClick = function () {
             var filter = isWindows()
-                ? "Bibliothèques de courbes:*.flow;*.json;*.txt,Tous les fichiers:*.*"
+                ? "Courbes Flow:*.flow;*.json;*.txt,Tous les fichiers:*.*"
                 : function (f) { return (f instanceof Folder) || /\.(flow|json|txt)$/i.test(f.name); };
-            var f = File.openDialog("Choisis une bibliothèque Flow (.flow / .json)", filter, false);
+            var start = flowLibraryFolder();
+            var f = null;
+            if (start.exists) {
+                try { f = new File(start.fsName + "/x.flow").openDlg("Choisis tes courbes Flow (.flow / .json)", filter, false); }
+                catch (e) { f = File.openDialog("Choisis tes courbes Flow (.flow / .json)", filter, false); }
+            } else {
+                f = File.openDialog("Choisis tes courbes Flow (.flow / .json)", filter, false);
+            }
             if (!f) return;
             var r = importFlowFile(f);
-            afterImport(r.added, r.found, "Flow · " + fileBaseName(f));
-        };
-
-        btnImpFolder.onClick = function () {
-            var folder = Folder.selectDialog("Choisis le dossier qui contient tes presets Flow");
-            if (!folder) return;
-            var r = importFlowFolder(folder);
-            afterImport(r.added, r.found, null);
+            if (!r.found) { alert("Aucune courbe trouvée dans ce fichier."); return; }
+            saveCurveLib();
+            refreshQuick(st.curve.id);
+            var msg = r.added + " courbe(s) importée(s)";
+            if (r.found > r.added) msg += " (" + (r.found - r.added) + " déjà présente(s))";
+            setStatus(msg + " : choisis-les dans la liste.");
         };
 
         // ---------- Glisser les poignées ----------
@@ -1629,12 +1521,15 @@
             return best;
         }
 
-        // Redessine l'éditeur SANS le masquer : le masquer pendant un glisser
-        // fait perdre le relâchement de la souris (la poignée restait collée au pointeur)
+        // Redessine l'éditeur sans le masquer : on alterne entre deux fonds presque identiques,
+        // ce qui force After Effects à appeler onDraw
+        var bgFlip = false;
         function softRepaint() {
             try {
-                if (canvas.text === "") canvas.text = " ";
-                else canvas.text = "";
+                bgFlip = !bgFlip;
+                var v = 0.05;
+                if (bgFlip) v = 0.051;
+                canvas.graphics.backgroundColor = canvas.graphics.newBrush(canvas.graphics.BrushType.SOLID_COLOR, grey(v));
             } catch (e) {
                 repaint(canvas);
             }
@@ -1665,9 +1560,7 @@
             });
             canvas.addEventListener("mouseout", function () { endDrag(); });
         } catch (e) {}
-        canvas.onClick = function () { endDrag(); };
 
-        refreshLibraries(null);
         refreshQuick(null);
         refreshEditorFields();
     }
@@ -1696,15 +1589,14 @@
             paintTree(host.parent, host);
         }
 
-        // ---------- Onglets : OUTILS / COURBE / BIBLIO ----------
+        // ---------- Onglets : OUTILS / COURBE ----------
         var ui = { page: "tools" };
         var gTabs = win.add("group");
         gTabs.orientation = "row";
         gTabs.alignChildren = ["fill", "center"];
         gTabs.spacing = 4;
-        var tabTools = addToggle(gTabs, "OUTILS", function () { return ui.page === "tools"; }, 90, 26);
-        var tabCurve = addToggle(gTabs, "COURBE", function () { return ui.page === "curve"; }, 90, 26);
-        var tabLib = addToggle(gTabs, "BIBLIO", function () { return ui.page === "lib"; }, 90, 26);
+        var tabTools = addToggle(gTabs, "OUTILS", function () { return ui.page === "tools"; }, 138, 26);
+        var tabCurve = addToggle(gTabs, "COURBE", function () { return ui.page === "curve"; }, 138, 26);
 
         var status = win.add("statictext", undefined, "", { truncate: "end" });
         status.alignment = ["fill", "top"];
@@ -1722,11 +1614,6 @@
         pageCurve.alignChildren = ["fill", "top"];
         pageCurve.spacing = 6;
         pageCurve.visible = false;
-        var pageLib = pages.add("group");
-        pageLib.orientation = "column";
-        pageLib.alignChildren = ["fill", "top"];
-        pageLib.spacing = 8;
-        pageLib.visible = false;
 
         // ---------- Alignement ----------
         var sAli = addSection(pageTools, "ALIGNEMENT");
@@ -1813,10 +1700,10 @@
         btnApply.preferredSize.height = 26;
         btnApply.helpTip = "Le preset démarre au début du texte et son animation est étirée jusqu'à la fin";
 
-        // ---------- Pages Courbe / Biblio ----------
+        // ---------- Page Courbe ----------
         function setStatus(t) { status.text = t; }
         try {
-            buildCurvePage(pageCurve, pageLib, setStatus);
+            buildCurvePage(pageCurve, setStatus);
         } catch (eCurve) {
             pageCurve.add("statictext", undefined, "Erreur page Courbe : " + eCurve.message + " (ligne " + eCurve.line + ")");
         }
@@ -1833,15 +1720,12 @@
             ui.page = p;
             pageTools.visible = (p === "tools");
             pageCurve.visible = (p === "curve");
-            pageLib.visible = (p === "lib");
             repaint(tabTools);
             repaint(tabCurve);
-            repaint(tabLib);
             relayoutAll();
         }
         tabTools.onClick = function () { showPage("tools"); };
         tabCurve.onClick = function () { showPage("curve"); };
-        tabLib.onClick = function () { showPage("lib"); };
 
         // ---------- Logique ----------
 
