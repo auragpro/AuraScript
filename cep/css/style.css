@@ -304,3 +304,17 @@ textarea:focus, input:focus, select:focus, .tt-url:focus, .pk-hex:focus {
 .th-bgsw button { height: 18px; border-radius: 4px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
 .th-bgsw button:hover { border-color: #ddd; }
 .theme-pop { max-height: calc(100vh - 48px); overflow-y: auto; }
+
+/* ---------- couleur et opacité des boutons (réglables dans Thème) ---------- */
+:root { --btn-rgb: 32, 31, 39; --btn-rgb2: 24, 23, 29; --btn-a: 1; --btn-text: #dddbe8; }
+.btn, .tab:not(.active), .thumb:not(.sel) {
+  background: linear-gradient(180deg, rgba(var(--btn-rgb), var(--btn-a)), rgba(var(--btn-rgb2), var(--btn-a)));
+  color: var(--btn-text);
+}
+.btn:active { background: linear-gradient(180deg, rgba(var(--btn-rgb2), var(--btn-a)), rgba(var(--btn-rgb), var(--btn-a))); }
+.btn.primary, .btn.toggle.on, .btn.danger, .fx-item.picked, #btnUpdate { color: revert; }
+.btn.primary, .btn.toggle.on { color: #120f1c; background: linear-gradient(135deg, #ffffff 0%, rgba(var(--acc-rgb), 1) 100%); }
+.btn.danger { color: #fff; background: linear-gradient(180deg, #e04b3d, #b8342a); }
+.fx-item.picked { color: #fff; background: #5a2323; }
+#btnUpdate { color: #111; background: linear-gradient(135deg, #fff, var(--acc)); }
+.th-seg.th-seg3 { grid-template-columns: repeat(3, 1fr); }
