@@ -1,5 +1,5 @@
 {
-  "version": "3.2.1",
+  "version": "3.2.2",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,6 +9,7 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "Thème > Fond : choisis le fond du panneau — couleur du thème, couleur unie, dégradé de 2 couleurs ou ta propre image (avec réglage « Assombrir »)"
+    "Thème > Boutons : boutons sombres, à la couleur du thème ou de ta couleur perso",
+    "Opacité des boutons réglable (0 % = transparents, top avec une image de fond)"
   ]
 }
