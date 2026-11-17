@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.1.5";
+    var VERSION = "3.1.6";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -321,7 +321,7 @@
 
     // ---------- onglet PRESETS ----------
     var Fx = (function () {
-        var lib = { items: [], folders: [] }, closed = {};
+        var lib = { items: [], folders: [] }, closed = {}, delMode = false, picked = {};
         function file() { return path.join(process.env.APPDATA || os.homedir(), "AuraScript", "fx-presets.json"); }
         function load() {
             try { var d = JSON.parse(fs.readFileSync(file(), "utf8")); lib.items = d.items || []; lib.folders = d.folders || []; } catch (e) { lib = { items: [], folders: [] }; }
@@ -373,19 +373,16 @@
             order.forEach(function (c) {
                 var isClosed = !q && closed[c];
                 var head = document.createElement("div"); head.className = "fx-cat-head";
-                head.innerHTML = '<span class="arrow"></span><span class="t"></span><span class="count"></span><span class="del" title="Retirer cette catégorie de la liste">×</span>';
+                head.innerHTML = '<span class="arrow"></span><span class="t"></span>' + (delMode ? '<span class="all">(tout sélectionner)</span>' : '') + '<span class="count"></span>';
                 head.querySelector(".arrow").textContent = isClosed ? "▸" : "▾";
                 head.querySelector(".t").textContent = c;
                 head.querySelector(".count").textContent = cats[c].length;
                 var grid = document.createElement("div"); grid.className = "fx-grid" + (isClosed ? " closed" : "");
                 head.addEventListener("click", function (e) {
-                    if (e.target.classList.contains("del")) {
-                        modal("Retirer la catégorie « " + c + " » de la liste ?\n(les fichiers .ffx ne sont pas supprimés)").then(function (yes) {
-                            if (!yes) return;
-                            lib.items = lib.items.filter(function (x) { return (x.cat || "Mes presets") !== c; });
-                            save(); render();
-                        });
-                        return;
+                    if (delMode && e.target.classList.contains("all")) {
+                        var all = cats[c].every(function (i) { return picked[lib.items[i].path]; });
+                        cats[c].forEach(function (i) { if (all) delete picked[lib.items[i].path]; else picked[lib.items[i].path] = true; });
+                        render(); return;
                     }
                     closed[c] = !closed[c];
                     try { localStorage.setItem("aura.fxClosed", JSON.stringify(closed)); } catch (x) {}
@@ -393,15 +390,13 @@
                 });
                 cats[c].sort(function (a, b) { return lib.items[a].name.localeCompare(lib.items[b].name); }).forEach(function (i) {
                     var it = lib.items[i];
-                    var b = document.createElement("button"); b.className = "btn fx-item"; b.title = it.name + "\n" + it.path;
+                    var b = document.createElement("button"); b.className = "btn fx-item" + (delMode && picked[it.path] ? " picked" : ""); b.title = it.name + "\n" + it.path;
                     b.textContent = it.name;
-                    var x = document.createElement("span"); x.className = "x"; x.textContent = "×"; x.title = "Retirer de la liste";
-                    b.appendChild(x);
-                    b.addEventListener("click", function (e) {
-                        if (e.target === x) {
-                            e.stopPropagation();
-                            lib.items = lib.items.filter(function (y) { return y.path !== it.path; });
-                            save(); render(); status("« " + it.name + " » retiré de la liste.");
+                    b.addEventListener("click", function () {
+                        if (delMode) {
+                            if (picked[it.path]) delete picked[it.path]; else picked[it.path] = true;
+                            b.classList.toggle("picked", !!picked[it.path]);
+                            updateDelBar();
                             return;
                         }
                         status("Application de « " + it.name + " »...");
@@ -411,11 +406,37 @@
                 });
                 box.appendChild(head); box.appendChild(grid);
             });
+            updateDelBar();
+        }
+        // mode suppression : la poubelle, puis on clique sur les presets à retirer
+        function updateDelBar() {
+            var n = Object.keys(picked).length;
+            $("fxDelInfo").textContent = n ? n + " preset(s) sélectionné(s)" : "Clique sur les presets à supprimer";
+            $("btnFxDelOk").disabled = !n;
+            $("btnFxDelOk").textContent = n ? "Supprimer (" + n + ")" : "Supprimer";
+        }
+        function setDelMode(on) {
+            delMode = on; picked = {};
+            $("btnFxTrash").classList.toggle("on", on);
+            $("fxDelBar").classList.toggle("hidden", !on);
+            $("fxList").classList.toggle("deleting", on);
+            render();
         }
         function init() {
             if (!fs) { $("fxList").innerHTML = '<div class="fx-empty">Cet onglet a besoin de Node.js.</div>'; return; }
             load(); render();
             $("fxSearch").addEventListener("input", render);
+            $("btnFxTrash").onclick = function () { setDelMode(!delMode); };
+            $("btnFxDelCancel").onclick = function () { setDelMode(false); };
+            $("btnFxDelOk").onclick = function () {
+                var n = Object.keys(picked).length;
+                if (!n) return;
+                modal("Supprimer " + n + " preset(s) de la liste ?\n(les fichiers .ffx restent sur ton PC)").then(function (yes) {
+                    if (!yes) return;
+                    lib.items = lib.items.filter(function (x) { return !picked[x.path]; });
+                    save(); setDelMode(false); status(n + " preset(s) supprimé(s) de la liste.");
+                });
+            };
             $("btnFxFiles").onclick = function () {
                 host("fxPickFiles").then(function (r) {
                     var files = (r && r.ok && r.data) || [], added = 0;
