@@ -1,5 +1,5 @@
 {
-  "version": "3.1.8",
+  "version": "3.2.0",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,7 +9,8 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "Nouvelle interface : coins arrondis, dégradés et touches de glow (légère pour le PC)",
-    "Courbe lumineuse dans l'éditeur de courbe"
+    "Bouton Thème (palette, en haut à droite) : 8 thèmes (Aura, Néon, Sakura, Émeraude, Inferno, Rubis, Or, Glace) ou ta couleur perso",
+    "Réglages : intensité du glow, arrondis, taille du texte, mode compact",
+    "Interface encore plus stylée"
   ]
 }
