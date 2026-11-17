@@ -165,11 +165,16 @@
     <!-- ================= PRESETS ================= -->
     <section id="page-presets" class="page hidden">
       <div class="row">
-        <input id="fxSearch" class="tt-url" placeholder="Rechercher un preset..." spellcheck="false">
+        <div class="search">
+          <svg class="search-ic" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+          <input id="fxSearch" placeholder="Rechercher un preset..." spellcheck="false" autocomplete="off">
+          <span id="fxCount" class="search-count"></span>
+          <button id="fxClear" class="search-clear hidden" title="Effacer la recherche">×</button>
+        </div>
       </div>
       <div class="row">
-        <button class="btn grow" id="btnFxFiles"><i class="ic"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg></i>+ Presets</button>
-        <button class="btn grow" id="btnFxFolder"><i class="ic"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5V12a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V6.5a1 1 0 0 0-1-1H8L6.5 3.5h-3a1 1 0 0 0-1 1z"/></svg></i>+ Dossier</button>
+        <button class="btn grow" id="btnFxFiles"><i class="ic"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg></i>Ajouter presets</button>
+        <button class="btn grow" id="btnFxFolder"><i class="ic"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5V12a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V6.5a1 1 0 0 0-1-1H8L6.5 3.5h-3a1 1 0 0 0-1 1z"/></svg></i>Ajouter dossier</button>
         <button class="btn small" id="btnFxRefresh" title="Relire les dossiers ajoutés (nouveaux presets)">↻</button>
         <button class="btn small fx-trash" id="btnFxTrash" title="Supprimer des presets de la liste"><svg viewBox="0 0 16 16" width="13" height="13"><path fill="currentColor" d="M6 1.5h4l.5 1H14v1.5H2V2.5h3.5zM3.2 5h9.6l-.7 9.1c-.05.8-.7 1.4-1.5 1.4H5.4c-.8 0-1.45-.6-1.5-1.4zM6 6.8v6.4h1.2V6.8zm2.8 0v6.4H10V6.8z"/></svg></button>
       </div>
