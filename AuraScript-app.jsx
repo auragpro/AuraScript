@@ -1,7 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.8.1
-// nouveautes: Correction : After Effects ne se bloque plus pendant la détection des paroles
-// nouveautes: L'analyse tourne vraiment à part, cachée et en priorité basse : tu peux continuer à monter pendant ce temps
+// version: 1.8.2
+// nouveautes: Détection des paroles : seule la partie gardée de la musique (entre son début et sa fin coupés) est analysée
+// nouveautes: Timing des mots beaucoup plus précis (alignement mot par mot) et moins de mots inventés sur l'instru
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -794,7 +794,7 @@
         return s;
     }
 
-    function startWhisperJob(audioFile, lyricsHint) {
+    function startWhisperJob(audioFile, lyricsHint, offMs, durMs) {
         var exe = findWhisperExe(new Folder(WH.dir.fsName + "/bin"), 0);
         var job = new Folder(WH.dir.fsName + "/job");
         if (!job.exists) job.create();
@@ -812,7 +812,8 @@
         try { if (audioFile.copy(audioCopy.fsName)) audioPath = audioCopy.fsName; } catch (eC) {}
 
         var args = '-m "' + whFile(WH.modelName).fsName + '" -f "' + audioPath + '"' +
-            " -l auto -t " + threads + " -ml 1 -sow -oj -pp" +
+            " -l auto -t " + threads + " -ml 1 -sow -ojf -pp -mc 0 -dtw small -nfa" +
+            (offMs > 0 ? " -ot " + offMs : "") + (durMs > 0 ? " -d " + durMs : "") +
             ' -of "' + job.fsName + '\\out"';
         var hint = promptFromLyrics(lyricsHint);
         if (hint) args += ' --prompt "' + hint + '"';
@@ -854,18 +855,38 @@
             .replace(/\\n/g, " ").replace(/\\t/g, " ").replace(/\\"/g, "\"").replace(/\\\//g, "/").replace(/\\\\/g, "\\");
     }
 
+    // Début précis du mot : 1er vrai token du segment avec son temps DTW (en centièmes de seconde)
+    function dtwStart(chunk, fallback) {
+        var re = /"text"\s*:\s*"((?:[^"\\]|\\.)*)"((?:(?!"text")[\s\S])*?)"t_dtw"\s*:\s*(-?[\d.]+)/g, m;
+        while ((m = re.exec(chunk)) !== null) {
+            var tx = unescapeJsonText(m[1]);
+            if (/^\s*\[_/.test(tx) || !trim(tx)) continue; // tokens spéciaux [_BEG_], [_TT_..]
+            var t = parseFloat(m[3]);
+            if (isNaN(t) || t < 0) return fallback;
+            t = t / 100;
+            if (Math.abs(t - fallback) > 1) return fallback; // valeur aberrante : on garde l'estimation normale
+            return t;
+        }
+        return fallback;
+    }
+
     // Lit out.json -> [{ t: secondes, w: "mot" }]
     function readWhisperWords(job) {
         var txt = readFileQuiet(new File(job.fsName + "/out.json"));
         var re = /"offsets"\s*:\s*\{\s*"from"\s*:\s*(\d+)\s*,\s*"to"\s*:\s*(\d+)\s*\}\s*,\s*"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
-        var words = [], m;
-        while ((m = re.exec(txt)) !== null) {
+        var segs = [], m;
+        while ((m = re.exec(txt)) !== null) segs.push({ from: parseInt(m[1], 10) / 1000, text: m[3], start: m.index, end: re.lastIndex });
+        var words = [];
+        for (var si = 0; si < segs.length; si++) {
+            var sg = segs[si];
+            var chunkEnd = (si + 1 < segs.length) ? segs[si + 1].start : txt.length;
+            m = [null, null, null, sg.text];
             var w = trim(unescapeJsonText(m[3]));
             if (!w) continue;
             if (/[\[\]\(\)\*♪♫]/.test(w)) continue; // [Musique], (rires), ♪
             w = w.replace(/^[^\wÀ-ÿ']+|[^\wÀ-ÿ']+$/g, "");
             if (!w) continue;
-            words.push({ t: parseInt(m[1], 10) / 1000, w: w });
+            words.push({ t: dtwStart(txt.substring(sg.end, chunkEnd), sg.from), w: w });
         }
         return words;
     }
@@ -880,6 +901,7 @@
         var last = -1;
         for (var i = 0; i < words.length; i++) {
             var t = layer.startTime + words[i].t * k;
+            if (t < layer.inPoint - 0.05 || t >= layer.outPoint) continue; // seulement la partie gardée
             if (t <= last + 0.001) t = last + 0.01; // jamais deux marqueurs au même moment
             last = t;
             times.push(t);
@@ -2440,7 +2462,13 @@
 
         function detStartJob() {
             det.phase = "job";
-            det.job = startWhisperJob(det.audio, det.hint);
+            // on n'analyse que la partie de la musique gardée dans la timeline
+            var L = det.layer, k = 1;
+            try { k = L.stretch / 100; } catch (eK) {}
+            if (!k || k < 0) k = 1;
+            var srcIn = Math.max(0, (L.inPoint - L.startTime) / k);
+            var srcOut = Math.max(srcIn + 0.2, (L.outPoint - L.startTime) / k);
+            det.job = startWhisperJob(det.audio, det.hint, Math.round(srcIn * 1000), Math.round((srcOut - srcIn) * 1000));
             status.text = "Analyse de la musique : 0 %";
         }
 
