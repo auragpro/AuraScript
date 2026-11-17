@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.4.6
+// version: 3.4.8
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1635,7 +1635,7 @@
             var size = parseFloat(arg(sizeArg)); if (!(size >= 0)) size = 10; if (size > 250) size = 250;
             var sel = comp.selectedLayers, texts = [], others = [], i;
             for (i = 0; i < sel.length; i++) { if (sel[i] instanceof TextLayer) texts.push(sel[i]); else others.push(sel[i]); }
-            return undoable("Texte biseaut\u00e9", function () {
+            return undoable("Texte incrustation", function () {
                 var created = 0;
                 if (!texts.length) {
                     if (others.length) {
@@ -1657,14 +1657,14 @@
                         okB++;
                         setStyleProp(L, "bevelEmboss/enabled", "bevelEmboss/blur", size);
                     }
-                    if (addLayerStyle(comp, L, "gradientFill/enabled", ["Gradient Overlay", "Incrustation en d\u00e9grad\u00e9"], 9007)) okG++;
+                    try { L.blendingMode = BlendingMode.OVERLAY; okG++; } catch (eM) {}   // mode de fusion Incrustation
                 }
                 deselectAll(comp);
                 for (i = 0; i < texts.length; i++) texts[i].selected = true;
                 if (!okB && !okG) return fail("Impossible d'ajouter les styles de calque. Essaie : Calque > Styles de calque > Biseautage et estampage.");
                 var m = (created ? created + " texte(s) cr\u00e9\u00e9(s)" : texts.length + " texte(s) mis \u00e0 jour") +
-                    " : biseautage et estampage (taille " + size + ") + incrustation en d\u00e9grad\u00e9.";
-                if (okB < texts.length || okG < texts.length) m += " Certains styles n'ont pas pu \u00eatre ajout\u00e9s.";
+                    " : biseautage et estampage (taille " + size + ") + mode Incrustation.";
+                if (okB < texts.length || okG < texts.length) m += " Certains r\u00e9glages n'ont pas pu \u00eatre appliqu\u00e9s.";
                 return ok(m);
             });
         } catch (e) { return fail("Erreur : " + e.message); }
