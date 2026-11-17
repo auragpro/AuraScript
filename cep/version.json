@@ -1,5 +1,5 @@
 {
-  "version": "3.3.0",
+  "version": "3.3.1",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,9 +9,6 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "Icônes sur tous les boutons et les onglets",
-    "Catégories rangées dans des cartes",
-    "Les messages en bas s'effacent tout seuls",
-    "Panneau étroit : les onglets n'affichent plus que leur icône"
+    "PRESETS : nouvelle barre de recherche — tape le nom, les lettres trouvées s'allument, Entrée applique le 1er résultat, Échap efface"
   ]
 }
