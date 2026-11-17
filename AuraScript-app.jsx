@@ -1,7 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.8.5
-// nouveautes: Paroles : timing des marqueurs environ 2 fois plus précis (deux méthodes de calage combinées)
-// nouveautes: Moins de mots inventés en fin de passage, qui décalaient les autres mots
+// version: 1.9.0
+// nouveautes: Paroles calées sur le signal audio : chaque mot est placé sur le démarrage réel de la voix dans le son
+// nouveautes: Nouvel outil d'analyse du son (ffmpeg, ~80 Mo, téléchargé une seule fois)
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -666,6 +666,8 @@
     var WH = {
         dir: new Folder(Folder.userData.fsName + "/AuraScript/whisper"),
         binUrl: "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.2/whisper-bin-x64.zip",
+        ffmpegUrls: ["https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip",
+                     "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl-shared.zip"],
         models: {
             turbo: { name: "ggml-large-v3-turbo-q5_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin", size: 574000000, min: 500000000, dtw: "large.v3.turbo", label: "~550 Mo" },
             small: { name: "ggml-small-q5_1.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin", size: 190085487, min: 180000000, dtw: "small", label: "~200 Mo" }
@@ -736,7 +738,7 @@
         if (!vbs.exists || !vbs.execute()) bat.execute();
     }
 
-    function startWhisperSetup(needBin, model) {
+    function startWhisperSetup(needBin, model, needFfmpeg) {
         if (!WH.dir.exists) WH.dir.create();
         var st = whFile("setup-status.txt");
         if (st.exists) st.remove();
@@ -756,11 +758,22 @@
             L.push("if errorlevel 1 (echo error=unzip> setup-status.txt & exit /b 1)");
             L.push("del /q whisper-bin.zip");
         }
-        L.push("echo model> setup-status.txt");
-        L.push('if exist model.part del /q model.part');
-        L.push('curl.exe -s -L --fail -o model.part "' + model.url + '"');
-        L.push("if errorlevel 1 (echo error=model> setup-status.txt & exit /b 1)");
-        L.push('move /y model.part ' + model.name + ' >nul');
+        if (needFfmpeg) {
+            L.push("echo ffmpeg> setup-status.txt");
+            L.push('curl.exe -s -L --fail -o ffmpeg.zip "' + WH.ffmpegUrls[0] + '" || curl.exe -s -L --fail -o ffmpeg.zip "' + WH.ffmpegUrls[1] + '"');
+            L.push("if errorlevel 1 (echo error=ffmpeg> setup-status.txt & exit /b 1)");
+            L.push('if not exist ffmpeg mkdir ffmpeg');
+            L.push('tar -xf ffmpeg.zip -C ffmpeg');
+            L.push("if errorlevel 1 (echo error=unzip-ffmpeg> setup-status.txt & exit /b 1)");
+            L.push("del /q ffmpeg.zip");
+        }
+        if (model) {
+            L.push("echo model> setup-status.txt");
+            L.push('if exist model.part del /q model.part');
+            L.push('curl.exe -s -L --fail -o model.part "' + model.url + '"');
+            L.push("if errorlevel 1 (echo error=model> setup-status.txt & exit /b 1)");
+            L.push('move /y model.part ' + model.name + ' >nul');
+        }
         L.push("echo done> setup-status.txt");
         L.push("exit");
         L.push("");
@@ -773,6 +786,7 @@
         var s = String(readFileQuiet(whFile("setup-status.txt"))).replace(/\s+$/, "");
         if (/^error/.test(s)) return { state: "error", msg: s };
         if (s === "done") return { state: "done" };
+        if (s === "ffmpeg") return { state: "ffmpeg", pct: 0 };
         if (s === "model") {
             var part = whFile("model.part");
             var pct = part.exists ? Math.floor(part.length / model.size * 100) : 0;
@@ -802,6 +816,143 @@
         return s;
     }
 
+    // ---------- Calage sur le signal audio (ffmpeg) ----------
+    // ffmpeg isole le centre du mixage (la voix), garde la bande 200-3000 Hz et mesure toutes les 16 ms
+    // l'énergie et la « tonalité » du son. On en tire les moments où la voix démarre.
+
+    function findFfmpegExe(folder, depth) {
+        if (!folder.exists || depth > 4) return null;
+        var items = folder.getFiles();
+        for (var i = 0; i < items.length; i++) {
+            if (items[i] instanceof File && /^ffmpeg\.exe$/i.test(items[i].name)) return items[i];
+        }
+        for (var j = 0; j < items.length; j++) {
+            if (items[j] instanceof Folder) {
+                var r = findFfmpegExe(items[j], depth + 1);
+                if (r) return r;
+            }
+        }
+        return null;
+    }
+
+    function ffmpegInstalled() {
+        return !!findFfmpegExe(new Folder(WH.dir.fsName + "/ffmpeg"), 0);
+    }
+
+    var VOICE_FILTER = "aformat=channel_layouts=stereo,aresample=16000,dialoguenhance=original=0:enhance=3," +
+        "pan=mono|c0=FC,highpass=f=200,lowpass=f=3000,asetnsamples=n=160:p=0," +
+        "astats=metadata=1:reset=1:measure_overall=RMS_level:measure_perchannel=none," +
+        "aspectralstats=win_size=512:measure=flatness,ametadata=print:file=env.txt";
+
+    // Lit env.txt -> démarrages de voix [{ t: secondes (temps du fichier), s: force 0..1 }]
+    function readVoiceOnsets(job, offsetSec) {
+        var txt = readFileQuiet(new File(job.fsName + "/env.txt"));
+        if (!txt) return [];
+        var blocks = txt.split("frame:");
+        var T = [], S0 = [], i;
+        for (i = 1; i < blocks.length; i++) {
+            var b = blocks[i];
+            var mt = /pts_time:([\d.]+)/.exec(b);
+            var mr = /RMS_level=(-?[\d.]+|-inf)/.exec(b);
+            var mf = /flatness=([\d.eE+\-]+)/.exec(b);
+            if (!mt) continue;
+            var e = (!mr || mr[1] === "-inf") ? -120 : Math.max(-120, parseFloat(mr[1]));
+            var f = mf ? parseFloat(mf[1]) : 1;
+            if (isNaN(f)) f = 1;
+            T.push(parseFloat(mt[1]) + offsetSec);
+            S0.push(Math.max(0, (e + 60) / 60) * (1 - Math.min(1, f * 1.5)));
+        }
+        var n = T.length;
+        if (n < 10) return [];
+        var S = [], O = [], k, mx = 0;
+        for (i = 0; i < n; i++) {
+            var a = Math.max(0, i - 1), z = Math.min(n - 1, i + 1), sum = 0;
+            for (k = a; k <= z; k++) sum += S0[k];
+            S.push(sum / (z - a + 1));
+        }
+        for (i = 0; i < n; i++) {
+            var mn = S[i];
+            for (k = Math.max(0, i - 4); k < i; k++) if (S[k] < mn) mn = S[k];
+            O.push(Math.max(0, S[i] - mn));
+            if (O[i] > mx) mx = O[i];
+        }
+        if (mx <= 0) return [];
+        var ons = [];
+        for (i = 2; i < n - 2; i++) {
+            var isPeak = true;
+            for (k = i - 2; k <= i + 2; k++) if (O[k] > O[i]) { isPeak = false; break; }
+            if (!isPeak || O[i] <= 0.08 * mx) continue;
+            var j = i;
+            for (k = Math.max(0, i - 8); k <= i; k++) if (S[k] < S[j]) j = k;
+            var q = j;
+            while (q < i && S[q] < S[j] + 0.15 * (S[i] - S[j])) q++;
+            if (ons.length && T[q] <= ons[ons.length - 1].t) continue;
+            ons.push({ t: T[q], s: O[i] / mx });
+        }
+        return ons;
+    }
+
+    // Cale les mots sur les démarrages de voix.
+    // 1) les mots reconnus par l'IA (m !== false) : chacun prend le démarrage le plus probable autour de son estimation
+    // 2) les mots devinés (m === false) : recalés dans l'espace qui reste entre leurs voisins, sans voler un démarrage
+    function bestOnset(ons, t, lo, hi) {
+        var best = null, bs = 0;
+        for (var k = 0; k < ons.length; k++) {
+            var o = ons[k];
+            if (o.t <= lo || o.t >= hi || Math.abs(o.t - t) > 0.35) continue;
+            var d = (o.t - t) / 0.3;
+            var sc = o.s * Math.exp(-d * d);
+            if (sc > bs) { bs = sc; best = o.t; }
+        }
+        return best;
+    }
+
+    function snapWordsToOnsets(words, ons) {
+        if (!ons || !ons.length || !words.length) return 0;
+        var n = words.length, i, snapped = 0;
+        var orig = [], isM = [];
+        for (i = 0; i < n; i++) { orig.push(words[i].t); isM.push(words[i].m !== false); }
+
+        // 1) mots reconnus
+        var prev = -1;
+        for (i = 0; i < n; i++) {
+            if (!isM[i]) continue;
+            var b = bestOnset(ons, orig[i], prev + 0.06, 1e9);
+            var v = (b !== null) ? b : orig[i];
+            if (b !== null) snapped++;
+            if (v <= prev + 0.04) v = prev + 0.04;
+            words[i].t = v;
+            prev = v;
+        }
+
+        // 2) mots devinés, entre leurs voisins reconnus
+        for (i = 0; i < n; i++) {
+            if (isM[i]) continue;
+            var pi = i - 1, ni = i + 1;
+            while (ni < n && !isM[ni]) ni++;
+            var lo = (pi >= 0) ? words[pi].t : -1;
+            var hi = (ni < n) ? words[ni].t : 1e9;
+            // estimation recalée selon le déplacement des voisins reconnus
+            var est = orig[i];
+            var pa = i - 1; while (pa >= 0 && !isM[pa]) pa--;
+            if (pa >= 0 && ni < n && orig[ni] > orig[pa]) {
+                var r = (orig[i] - orig[pa]) / (orig[ni] - orig[pa]);
+                est = words[pa].t + r * (words[ni].t - words[pa].t);
+            } else if (pa >= 0) {
+                est = orig[i] + (words[pa].t - orig[pa]);
+            } else if (ni < n) {
+                est = orig[i] + (words[ni].t - orig[ni]);
+            }
+            var b2 = bestOnset(ons, est, lo + 0.06, hi - 0.06);
+            var v2 = (b2 !== null) ? b2 : est;
+            if (b2 !== null) snapped++;
+            if (v2 <= lo + 0.04) v2 = lo + 0.04;
+            if (hi < 1e9 && v2 >= hi - 0.04) v2 = (lo + hi) / 2;
+            words[i].t = v2;
+        }
+        return snapped;
+    }
+
     function startWhisperJob(audioFile, lyricsHint, offMs, durMs, model) {
         var exe = findWhisperExe(new Folder(WH.dir.fsName + "/bin"), 0);
         var job = new Folder(WH.dir.fsName + "/job");
@@ -826,6 +977,15 @@
         var hint = promptFromLyrics(lyricsHint);
         if (hint) args += ' --prompt "' + hint + '"';
 
+        // analyse du signal (démarrages de voix) sur la même portion de la musique
+        var ffStep = "rem pas de ffmpeg";
+        var ff = findFfmpegExe(new Folder(WH.dir.fsName + "/ffmpeg"), 0);
+        if (ff) {
+            ffStep = 'cd /d "' + job.fsName + '" && "' + ff.fsName + '" -hide_banner -loglevel error -y' +
+                (offMs > 0 ? " -ss " + (offMs / 1000) : "") + (durMs > 0 ? " -t " + (durMs / 1000) : "") +
+                ' -i "' + audioPath + '" -af "' + VOICE_FILTER + '" -f null - 2> ffmpeg-log.txt';
+        }
+
         var L = [
             "",
             "@echo off",
@@ -833,6 +993,7 @@
             'cd /d "' + exe.parent.fsName + '"',
             "echo running> \"" + job.fsName + "\\status.txt\"",
             '"' + exe.fsName + '" ' + args + ' > "' + job.fsName + '\\log.txt" 2>&1',
+            ffStep,
             'if exist "' + job.fsName + '\\out.json" (echo done> "' + job.fsName + '\\status.txt") else (echo error> "' + job.fsName + '\\status.txt")',
             "exit",
             ""
@@ -965,8 +1126,8 @@
             }
         }
 
-        var matched = 0;
-        for (i = 0; i < n; i++) if (times[i] !== null) matched++;
+        var matched = 0, matchedFlags = [];
+        for (i = 0; i < n; i++) { matchedFlags.push(times[i] !== null); if (times[i] !== null) matched++; }
         if (!matched) return { words: null, matched: 0 };
 
         // mots non trouvés : répartis entre leurs voisins trouvés (selon la longueur des mots)
@@ -997,7 +1158,7 @@
             if (t > t1 - 0.04) t = t1 - 0.04;
             if (t <= prev + 0.04) t = prev + 0.04;
             prev = t;
-            out.push({ t: t, w: userWords[i] });
+            out.push({ t: t, w: userWords[i], m: matchedFlags[i] });
         }
         return { words: out, matched: matched };
     }
@@ -2584,6 +2745,7 @@
             det.srcOut = srcOut;
             // marge avant (contexte) et petite marge après : au-delà, l'IA invente des mots qui faussent le calage
             var a0 = Math.max(0, srcIn - 3);
+            det.a0 = a0;
             det.job = startWhisperJob(det.audio, det.hint, Math.round(a0 * 1000), Math.round((srcOut + 1 - a0) * 1000), det.model);
             status.text = "Analyse de la musique en cours...";
         }
@@ -2608,6 +2770,15 @@
                 for (var h = 0; h < heard.length; h++) if (heard[h].t >= det.srcIn - 0.05 && heard[h].t < det.srcOut) words.push(heard[h]);
                 if (!words.length) { detStop(); alert("Aucune parole reconnue dans la partie gardée de la musique.\n\nAstuce : colle les paroles dans la zone Lyrics, l'IA s'en servira pour caler chaque mot."); return; }
             }
+            // calage fin sur le signal audio (démarrages de voix)
+            var snapped = 0;
+            try { snapped = snapWordsToOnsets(words, readVoiceOnsets(det.job, det.a0 || 0)); } catch (eSnap) {}
+            if (aligned) {
+                for (var cl = 0; cl < words.length; cl++) {
+                    if (words[cl].t < det.srcIn) words[cl].t = det.srcIn;
+                    if (words[cl].t > det.srcOut - 0.04) words[cl].t = det.srcOut - 0.04;
+                }
+            }
             var replace = false;
             try {
                 var mk = layer.property("ADBE Marker");
@@ -2626,8 +2797,9 @@
                     for (var j = 1; j <= comp.numLayers; j++) comp.layer(j).selected = false;
                     layer.selected = true;
                 } catch (eSel) {}
-                if (aligned) detStop(n + " marqueur(s) posé(s) avec tes paroles (" + matched + " mot(s) entendus par l'IA, les autres placés entre eux). Clique sur « Créer les paroles ».");
-                else detStop(n + " mot(s) détecté(s) et marqués. Corrige les mots si besoin puis clique sur « Créer les paroles ».");
+                var sigTxt = snapped ? " " + snapped + " calé(s) sur le signal audio." : "";
+                if (aligned) detStop(n + " marqueur(s) posé(s) avec tes paroles (" + matched + " mot(s) reconnus)." + sigTxt + " Clique sur « Créer les paroles ».");
+                else detStop(n + " mot(s) détecté(s) et marqués." + sigTxt + " Corrige les mots si besoin puis clique sur « Créer les paroles ».");
             } catch (e) {
                 detStop();
                 alert("Erreur : " + e.message);
@@ -2642,7 +2814,9 @@
                     var s = readSetupState(det.model);
                     if (s.state === "error") { detStop(); alert("Le téléchargement du moteur a échoué (" + s.msg + ").\nVérifie ta connexion internet puis réessaie."); return; }
                     if (s.state === "done") { detStartJob(); return; }
-                    status.text = (s.state === "model") ? "Téléchargement du modèle IA : " + s.pct + " % (une seule fois)" : "Téléchargement du moteur (une seule fois)...";
+                    if (s.state === "model") status.text = "Téléchargement du modèle IA : " + s.pct + " % (une seule fois)";
+                    else if (s.state === "ffmpeg") status.text = "Téléchargement de l'outil d'analyse du son (une seule fois)...";
+                    else status.text = "Téléchargement du moteur (une seule fois)...";
                     return;
                 }
                 if (det.phase === "job") {
@@ -2689,7 +2863,17 @@
             btnDetect.text = "Annuler l'analyse";
             var hasBin = whisperBinInstalled();
             var turbo = WH.models.turbo, small = WH.models.small;
-            if (hasBin && modelInstalled(turbo)) {
+            var hasFf = ffmpegInstalled();
+            if (hasBin && modelInstalled(turbo) && !hasFf) {
+                det.model = turbo;
+                if (confirm("Nouveau : AuraScript peut caler chaque mot sur le signal audio (le vrai démarrage de la voix), c'est beaucoup plus précis.\n\nTélécharger l'outil d'analyse du son (~80 Mo, une seule fois) ?\n\nNon = sans calage sur le signal pour cette fois.")) {
+                    det.phase = "setup";
+                    startWhisperSetup(false, null, true);
+                    status.text = "Téléchargement de l'outil d'analyse du son (une seule fois)...";
+                } else {
+                    detStartJob();
+                }
+            } else if (hasBin && modelInstalled(turbo)) {
                 det.model = turbo;
                 detStartJob();
             } else if (hasBin && modelInstalled(small) &&
@@ -2697,10 +2881,10 @@
                 det.model = small;
                 detStartJob();
             } else {
-                if (!(hasBin && modelInstalled(small)) && !confirm("Première utilisation : AuraScript va télécharger le moteur de reconnaissance des paroles (" + turbo.label + ", une seule fois).\n\nContinuer ?")) { detStop(); return; }
+                if (!(hasBin && modelInstalled(small)) && !confirm("Première utilisation : AuraScript va télécharger le moteur de reconnaissance des paroles et l'outil d'analyse du son (" + turbo.label + " + ~80 Mo, une seule fois).\n\nContinuer ?")) { detStop(); return; }
                 det.model = turbo;
                 det.phase = "setup";
-                startWhisperSetup(!hasBin, turbo);
+                startWhisperSetup(!hasBin, turbo, !hasFf);
                 status.text = "Téléchargement du modèle IA (une seule fois)...";
             }
             det.task = app.scheduleTask("try { $.global.__auraDetectPoll(); } catch (e) {}", 1000, true);
