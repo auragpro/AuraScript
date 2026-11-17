@@ -160,12 +160,18 @@
       <div class="card ed-card">
       <div class="section-title">EDGE DETECT TEXT<span class="grow"></span>
         <button class="btn ed-hbtn fx-trash" id="edTrash" title="Supprimer des presets"><svg viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M6 1.5h4l.5 1H14v1.5H2V2.5h3.5zM3.2 5h9.6l-.7 9.1c-.05.8-.7 1.4-1.5 1.4H5.4c-.8 0-1.45-.6-1.5-1.4z"/></svg></button>
-        <button class="btn primary ed-hbtn ed-plus" id="edAdd" title="Créer un nouveau preset (il s'applique tout de suite sur la vidéo sélectionnée)">+</button>
+        <button class="btn primary ed-hbtn ed-plus" id="edAdd" title="Ajouter un de tes presets .ffx (il s'applique tout de suite sur la vidéo sélectionnée)">+</button>
       </div>
-      <div class="muted small-text">Sélectionne ta vidéo, puis clique sur un preset : la vidéo en contours apparaît à travers le texte.</div>
+      <div class="muted small-text">Ajoute tes presets avec « + ». Sélectionne ta vidéo puis clique sur un preset : ton effet apparaît à travers le texte.</div>
       <div id="edForm" class="ed-form hidden">
         <div class="ed-form-title" id="edFormTitle">Nouveau preset</div>
-        <div class="ed-field"><label for="edName">Nom</label><input id="edName" type="text" placeholder="ex : Néon blanc" spellcheck="false" autocomplete="off"></div>
+        <div class="ed-field"><label for="edFfx">Ton preset (.ffx)</label>
+          <div class="row center ed-inline">
+            <select id="edFfx" class="grow"></select>
+            <button class="btn" id="edBrowse" title="Choisir un fichier .ffx sur ton PC">Parcourir…</button>
+          </div>
+        </div>
+        <div class="ed-field"><label for="edName">Nom</label><input id="edName" type="text" placeholder="(nom du fichier par défaut)" spellcheck="false" autocomplete="off"></div>
         <div class="ed-field"><label for="edText">Texte</label>
           <div class="row center ed-inline">
             <select id="edText" class="grow"></select>
@@ -176,13 +182,10 @@
         <div class="ed-chips" id="edChips"></div>
         <div class="ed-field"><label>Cache</label>
           <div class="th-seg" id="edMatte">
-            <button data-m="alpha" title="La vidéo en contours apparaît DANS le texte">Alpha</button><button data-m="alphaInv" title="La vidéo en contours apparaît AUTOUR du texte">Alpha inv.</button><button data-m="luma" title="Cache selon la luminosité du texte">Luma</button><button data-m="lumaInv" title="Cache luma inversé">Luma inv.</button>
+            <button data-m="alpha" title="L'effet apparaît DANS le texte">Alpha</button><button data-m="alphaInv" title="L'effet apparaît AUTOUR du texte">Alpha inv.</button><button data-m="luma" title="Cache selon la luminosité du texte">Luma</button><button data-m="lumaInv" title="Cache luma inversé">Luma inv.</button>
           </div>
         </div>
-        <label class="th-check"><input type="checkbox" id="edInvert"> Contours inversés (lignes claires sur fond sombre)</label>
-        <div class="th-row"><label>Mélange</label><input type="range" id="edBlend" min="0" max="100" step="5" value="0"><span class="val" id="edBlendV">0 %</span></div>
         <div class="th-row"><label>Largeur</label><input type="range" id="edWidth" min="30" max="100" step="5" value="80"><span class="val" id="edWidthV">80 %</span></div>
-        <div class="ed-field"><label for="edFfx">Effet en plus</label><select id="edFfx"></select></div>
         <div class="row">
           <button class="btn primary grow" id="edSave">Créer et appliquer</button>
           <button class="btn" id="edCancel">Annuler</button>
