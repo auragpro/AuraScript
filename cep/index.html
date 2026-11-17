@@ -19,6 +19,19 @@
     <div class="th-row"><label>Arrondis</label><input type="range" id="thRad" min="0" max="14" step="1"><span class="val" id="thRadV"></span></div>
     <div class="th-row"><label>Texte</label><input type="range" id="thFs" min="10" max="13" step="0.5"><span class="val" id="thFsV"></span></div>
     <label class="th-check"><input type="checkbox" id="thCompact"> Mode compact (boutons plus petits)</label>
+    <h4>Fond</h4>
+    <div class="th-seg" id="thBgMode">
+      <button data-m="theme">Thème</button><button data-m="color">Couleur</button><button data-m="grad">Dégradé</button><button data-m="image">Image</button>
+    </div>
+    <div id="thBgColorBox" class="col">
+      <div class="th-bgsw" id="thBgSw"></div>
+      <div class="th-row"><label id="thBg1L">Couleur</label><input id="thBg1" class="pk-hex" maxlength="7" spellcheck="false" placeholder="#101018"></div>
+      <div class="th-row" id="thBg2Row"><label>Couleur 2</label><input id="thBg2" class="pk-hex" maxlength="7" spellcheck="false" placeholder="#2a1240"></div>
+    </div>
+    <div id="thBgImgBox" class="col">
+      <div class="row"><button class="btn grow" id="thBgPick">Choisir une image...</button></div>
+      <div class="th-row"><label>Assombrir</label><input type="range" id="thBgDim" min="0" max="90" step="5"><span class="val" id="thBgDimV"></span></div>
+    </div>
   </div>
 
   <div id="banner" class="banner hidden">
