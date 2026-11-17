@@ -32,6 +32,15 @@
       <div class="row"><button class="btn grow" id="thBgPick">Choisir une image...</button></div>
       <div class="th-row"><label>Assombrir</label><input type="range" id="thBgDim" min="0" max="90" step="5"><span class="val" id="thBgDimV"></span></div>
     </div>
+    <h4>Boutons</h4>
+    <div class="th-seg th-seg3" id="thBtnMode">
+      <button data-m="dark">Sombre</button><button data-m="theme">Thème</button><button data-m="custom">Perso</button>
+    </div>
+    <div id="thBtnCustom" class="col">
+      <div class="th-bgsw" id="thBtnSw"></div>
+      <div class="th-row"><label>Couleur</label><input id="thBtnHex" class="pk-hex" maxlength="7" spellcheck="false" placeholder="#3a2a6a"></div>
+    </div>
+    <div class="th-row"><label>Opacité</label><input type="range" id="thBtnA" min="0" max="100" step="5"><span class="val" id="thBtnAV"></span></div>
   </div>
 
   <div id="banner" class="banner hidden">
