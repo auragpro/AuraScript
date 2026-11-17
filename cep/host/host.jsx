@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.0.7
+// version: 3.0.8
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1315,6 +1315,48 @@
                 deselectAll(comp);
                 for (i = 0; i < made.length; i++) made[i].selected = true;
                 return ok(made.length + " solide(s) #" + hex + " cr\u00e9\u00e9(s)" + (targets.length ? "." : " sur toute la composition."));
+            });
+        } catch (e) { return fail("Erreur : " + e.message); }
+    };
+
+    // ---------- Coller une image (fichier prepare par le panneau) ----------
+    function imagesFolder() {
+        var root = app.project.rootFolder;
+        for (var i = 1; i <= app.project.numItems; i++) {
+            var it = app.project.item(i);
+            if (it instanceof FolderItem && it.name === "AuraScript Images" && it.parentFolder === root) return it;
+        }
+        return app.project.items.addFolder("AuraScript Images");
+    }
+
+    API.importImage = function (pathJson) {
+        try {
+            var comp = needComp();
+            var f = new File(String(arg(pathJson)));
+            if (!f.exists) return fail("Fichier image introuvable.");
+            var sel = comp.selectedLayers, top = null, i;
+            for (i = 0; i < sel.length; i++) if (!top || sel[i].index < top.index) top = sel[i];
+            var t = comp.time;
+            return undoable("Coller l'image", function () {
+                var io = new ImportOptions(f);
+                var item = app.project.importFile(io);
+                try { item.parentFolder = imagesFolder(); } catch (e1) {}
+                var L = comp.layers.add(item);
+                var len = L.outPoint - L.inPoint;
+                if (!(len > 0)) len = comp.duration;
+                L.startTime = t;
+                L.inPoint = t;
+                L.outPoint = Math.min(comp.duration, t + len);
+                if (top) { try { L.moveBefore(top); } catch (e2) {} }
+                var w = item.width, h = item.height;
+                if (w > comp.width || h > comp.height) {
+                    var k = Math.min(comp.width / w, comp.height / h) * 100;
+                    L.property("ADBE Transform Group").property("ADBE Scale").setValue([k, k]);
+                }
+                L.property("ADBE Transform Group").property("ADBE Position").setValue([comp.width / 2, comp.height / 2]);
+                deselectAll(comp);
+                L.selected = true;
+                return ok("Image coll\u00e9e : " + item.name + " (" + w + "\u00d7" + h + ").");
             });
         } catch (e) { return fail("Erreur : " + e.message); }
     };
