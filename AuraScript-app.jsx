@@ -1,8 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.8.0
-// nouveautes: INTRO : bouton « Détecter les paroles » — l'IA écoute ta musique et pose un marqueur sur chaque mot
-// nouveautes: L'analyse tourne en arrière-plan (priorité basse) : After Effects reste utilisable pendant ce temps
-// nouveautes: Si tu colles les paroles dans la zone Lyrics, l'IA s'en sert pour mieux reconnaître les mots
+// version: 1.8.1
+// nouveautes: Correction : After Effects ne se bloque plus pendant la détection des paroles
+// nouveautes: L'analyse tourne vraiment à part, cachée et en priorité basse : tu peux continuer à monter pendant ce temps
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -716,9 +715,20 @@
         return !!(findWhisperExe(new Folder(WH.dir.fsName + "/bin"), 0) && m.exists && m.length > WH.modelSize * 0.95);
     }
 
-    // Lance un .bat réduit, en priorité basse : After Effects reste fluide
+    // Lance un .bat complètement détaché d'After Effects (caché, priorité basse).
+    // On passe par un petit .vbs ouvert avec File.execute() : After Effects n'attend pas la fin,
+    // contrairement à system.callSystem qui bloquait toute l'interface pendant l'analyse.
     function launchBat(bat) {
-        system.callSystem('cmd.exe /c start "AuraScript paroles" /min /low "' + bat.fsName + '"');
+        var vbs = new File(bat.parent.fsName + "/" + bat.name.replace(/\.bat$/i, "") + "-launch.vbs");
+        var q = '""';
+        var line = 'CreateObject("WScript.Shell").Run "cmd.exe /c start ' + q + q + ' /b /low ' + q + bat.fsName + q + '", 0, False';
+        vbs.encoding = "BINARY";
+        vbs.lineFeed = "Windows";
+        if (vbs.open("w")) {
+            vbs.write(line + "\r\n");
+            vbs.close();
+        }
+        if (!vbs.exists || !vbs.execute()) bat.execute();
     }
 
     function startWhisperSetup() {
