@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.5.3
+// version: 3.5.4
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1770,8 +1770,12 @@
                 comp.time = t;
                 deselectAll(comp);
                 for (i = 0; i < made.length; i++) made[i].selected = true;
+                var pc = null;
+                if (o.precomp) {   // case "Precomposer juste apres" cochee
+                    try { pc = precomposeSelected(comp); if (pc) pc.name = uniqueCompName("EDGE - " + label); } catch (eC) { pc = null; }
+                }
                 var m = "\u00ab " + (o.name || "Edge") + " \u00bb appliqu\u00e9 sur \u00ab " + vids[0].name + " \u00bb" + (vids.length > 1 ? " (+" + (vids.length - 1) + ")" : "") +
-                    ", cache : \u00ab " + label + " \u00bb.";
+                    ", cache : \u00ab " + label + " \u00bb." + (pc ? " Precomp \u00ab " + pc.name + " \u00bb cr\u00e9\u00e9." : (o.precomp ? " (Precomp impossible.)" : ""));
                 return ok(m);
             });
         } catch (e) { return fail("Erreur : " + e.message); }
