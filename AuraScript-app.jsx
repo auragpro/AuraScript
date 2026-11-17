@@ -1,7 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.9.3
-// nouveautes: OUTILS : bouton « Ancre au centre » — met le point d'ancrage au milieu du calque sans le déplacer
-// nouveautes: OUTILS : titre « Alignement » retiré
+// version: 1.9.4
+// nouveautes: OUTILS : bouton renommé « Centrer le point d'ancrage »
+// nouveautes: COURBE : 4 lignes de vignettes au lieu de 2 (20 courbes par page)
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -2028,7 +2028,7 @@
     }
 
     // ---------- Vignettes de la bibliothèque ----------
-    var THUMB = { w: 52, h: 50, cols: 5, rows: 2, nameH: 12 };
+    var THUMB = { w: 52, h: 50, cols: 5, rows: 4, nameH: 12 };
 
     function fitName(g, name, font, maxW) {
         var m = font ? g.measureString(name, font) : g.measureString(name);
@@ -2664,7 +2664,7 @@
         btnUncomp.preferredSize = [112, 26];
         btnUncomp.helpTip = "Ressort le contenu du precomp sélectionné dans la composition";
 
-        var btnAnchor = themeButton(sAli.add("button", undefined, "Ancre au centre"));
+        var btnAnchor = themeButton(sAli.add("button", undefined, "Centrer le point d'ancrage"));
         btnAnchor.preferredSize = [228, 26];
         btnAnchor.alignment = ["left", "top"];
         btnAnchor.helpTip = "Met le point d'ancrage au milieu des calques sélectionnés, sans les déplacer à l'écran";
@@ -2802,7 +2802,7 @@
             var comp = getActiveComp();
             if (!comp) { alert("Ouvre d'abord une composition."); return; }
             if (!comp.selectedLayers.length) { alert("Sélectionne d'abord un ou plusieurs calques."); return; }
-            app.beginUndoGroup("Ancre au centre");
+            app.beginUndoGroup("Centrer le point d'ancrage");
             try {
                 var r = centerAnchors(comp);
                 status.text = r.done + " point(s) d'ancrage centré(s)." + (r.skipped ? " " + r.skipped + " calque(s) ignoré(s) (caméra, lumière ou ancre animée)." : "");
