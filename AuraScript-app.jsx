@@ -1,7 +1,8 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.7.1
-// nouveautes: COURBE : nouveau bouton « Lire clés » à droite des vignettes
-// nouveautes: Il lit la courbe des keyframes sélectionnées (posée avec Flow ou AuraScript) et la met dans l'éditeur
+// version: 1.8.0
+// nouveautes: INTRO : bouton « Détecter les paroles » — l'IA écoute ta musique et pose un marqueur sur chaque mot
+// nouveautes: L'analyse tourne en arrière-plan (priorité basse) : After Effects reste utilisable pendant ce temps
+// nouveautes: Si tu colles les paroles dans la zone Lyrics, l'IA s'en sert pour mieux reconnaître les mots
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -657,6 +658,228 @@
         var tr = layer.property("ADBE Transform Group");
         tr.property("ADBE Anchor Point").setValue([r.left + r.width / 2, r.top + r.height / 2]);
         tr.property("ADBE Position").setValue([comp.width / 2, comp.height / 2]);
+    }
+
+    // =====================================================================
+    // Détection automatique des paroles (Whisper, sur le PC, en arrière-plan)
+    // =====================================================================
+
+    var WH = {
+        dir: new Folder(Folder.userData.fsName + "/AuraScript/whisper"),
+        binUrl: "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.2/whisper-bin-x64.zip",
+        modelUrl: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
+        modelName: "ggml-small-q5_1.bin",
+        modelSize: 190085487,
+        audioExt: /\.(mp3|wav|flac|ogg)$/i
+    };
+
+    function whFile(name) { return new File(WH.dir.fsName + "/" + name); }
+
+    function writeFileText(f, text) {
+        f.encoding = "UTF-8";
+        f.lineFeed = "Windows";
+        if (!f.open("w")) return false;
+        f.write(text);
+        f.close();
+        return true;
+    }
+
+    function readFileQuiet(f) {
+        try {
+            if (!f.exists) return "";
+            f.encoding = "UTF-8";
+            if (!f.open("r")) return "";
+            var s = f.read();
+            f.close();
+            return s;
+        } catch (e) { return ""; }
+    }
+
+    // Cherche whisper-cli.exe dans le dossier décompressé
+    function findWhisperExe(folder, depth) {
+        if (!folder.exists || depth > 3) return null;
+        var items = folder.getFiles();
+        for (var i = 0; i < items.length; i++) {
+            if (items[i] instanceof File && /^whisper-cli\.exe$/i.test(items[i].name)) return items[i];
+        }
+        for (var j = 0; j < items.length; j++) {
+            if (items[j] instanceof Folder) {
+                var r = findWhisperExe(items[j], depth + 1);
+                if (r) return r;
+            }
+        }
+        return null;
+    }
+
+    function whisperInstalled() {
+        var m = whFile(WH.modelName);
+        return !!(findWhisperExe(new Folder(WH.dir.fsName + "/bin"), 0) && m.exists && m.length > WH.modelSize * 0.95);
+    }
+
+    // Lance un .bat réduit, en priorité basse : After Effects reste fluide
+    function launchBat(bat) {
+        system.callSystem('cmd.exe /c start "AuraScript paroles" /min /low "' + bat.fsName + '"');
+    }
+
+    function startWhisperSetup() {
+        if (!WH.dir.exists) WH.dir.create();
+        var st = whFile("setup-status.txt");
+        if (st.exists) st.remove();
+        var bat = whFile("setup.bat");
+        var L = [
+            "",
+            "@echo off",
+            "chcp 65001 >nul",
+            'cd /d "%~dp0"',
+            "echo bin> setup-status.txt",
+            'curl.exe -s -L --fail -o whisper-bin.zip "' + WH.binUrl + '"',
+            "if errorlevel 1 (echo error=bin> setup-status.txt & exit /b 1)",
+            'if not exist bin mkdir bin',
+            'tar -xf whisper-bin.zip -C bin',
+            "if errorlevel 1 (echo error=unzip> setup-status.txt & exit /b 1)",
+            "del /q whisper-bin.zip",
+            "echo model> setup-status.txt",
+            'curl.exe -s -L --fail -o model.part "' + WH.modelUrl + '"',
+            "if errorlevel 1 (echo error=model> setup-status.txt & exit /b 1)",
+            'move /y model.part ' + WH.modelName + ' >nul',
+            "echo done> setup-status.txt",
+            "exit",
+            ""
+        ];
+        writeFileText(bat, L.join("\r\n"));
+        launchBat(bat);
+    }
+
+    // Etat de l'installation : { state: "bin"|"model"|"done"|"error", pct, msg }
+    function readSetupState() {
+        var s = String(readFileQuiet(whFile("setup-status.txt"))).replace(/\s+$/, "");
+        if (/^error/.test(s)) return { state: "error", msg: s };
+        if (s === "done") return { state: "done" };
+        if (s === "model") {
+            var part = whFile("model.part");
+            var pct = part.exists ? Math.floor(part.length / WH.modelSize * 100) : 0;
+            return { state: "model", pct: Math.min(99, pct) };
+        }
+        return { state: "bin", pct: 0 };
+    }
+
+    // Nettoie le texte des paroles collées pour s'en servir comme aide (prompt)
+    function stripAccents(s) {
+        var from = "àâäáãåçéèêëíìîïñóòôöõúùûüýÿÀÂÄÁÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝœŒæÆ";
+        var to = "aaaaaaceeeeiiiinooooouuuuyyAAAAAACEEEEIIIINOOOOOUUUUYoOaA";
+        var out = "";
+        for (var i = 0; i < s.length; i++) {
+            var c = s.charAt(i), k = from.indexOf(c);
+            if (k >= 0) c = to.charAt(k);
+            if (c.charCodeAt(0) > 126) c = " ";
+            out += c;
+        }
+        return out;
+    }
+
+    function promptFromLyrics(text) {
+        var s = stripAccents(String(text || "")).replace(/[\r\n\t]+/g, " ").replace(/["%^&|<>!]/g, " ").replace(/\s+/g, " ");
+        s = trim(s);
+        if (s.length > 600) s = s.substring(0, 600);
+        return s;
+    }
+
+    function startWhisperJob(audioFile, lyricsHint) {
+        var exe = findWhisperExe(new Folder(WH.dir.fsName + "/bin"), 0);
+        var job = new Folder(WH.dir.fsName + "/job");
+        if (!job.exists) job.create();
+        var files = job.getFiles();
+        for (var i = 0; i < files.length; i++) { try { if (files[i] instanceof File) files[i].remove(); } catch (e) {} }
+
+        var cores = parseInt($.getenv("NUMBER_OF_PROCESSORS"), 10);
+        if (isNaN(cores) || cores < 2) cores = 4;
+        var threads = Math.max(2, Math.min(8, Math.floor(cores / 2)));
+
+        // copie de la musique avec un nom simple (évite les soucis d'accents dans le chemin)
+        var ext = String(audioFile.name).replace(/^.*\./, "").toLowerCase();
+        var audioCopy = new File(job.fsName + "/audio." + ext);
+        var audioPath = audioFile.fsName;
+        try { if (audioFile.copy(audioCopy.fsName)) audioPath = audioCopy.fsName; } catch (eC) {}
+
+        var args = '-m "' + whFile(WH.modelName).fsName + '" -f "' + audioPath + '"' +
+            " -l auto -t " + threads + " -ml 1 -sow -oj -pp" +
+            ' -of "' + job.fsName + '\\out"';
+        var hint = promptFromLyrics(lyricsHint);
+        if (hint) args += ' --prompt "' + hint + '"';
+
+        var L = [
+            "",
+            "@echo off",
+            "chcp 65001 >nul",
+            'cd /d "' + exe.parent.fsName + '"',
+            "echo running> \"" + job.fsName + "\\status.txt\"",
+            '"' + exe.fsName + '" ' + args + ' > "' + job.fsName + '\\log.txt" 2>&1',
+            'if exist "' + job.fsName + '\\out.json" (echo done> "' + job.fsName + '\\status.txt") else (echo error> "' + job.fsName + '\\status.txt")',
+            "exit",
+            ""
+        ];
+        var bat = new File(job.fsName + "/run.bat");
+        writeFileText(bat, L.join("\r\n"));
+        launchBat(bat);
+        return job;
+    }
+
+    function stopWhisper() {
+        try { system.callSystem("taskkill /f /im whisper-cli.exe"); } catch (e) {}
+    }
+
+    // { state: "running"|"done"|"error", pct, log }
+    function readJobState(job) {
+        var s = String(readFileQuiet(new File(job.fsName + "/status.txt"))).replace(/\s+$/, "");
+        var log = String(readFileQuiet(new File(job.fsName + "/log.txt")));
+        var pct = 0, m, re = /progress\s*=\s*(\d+)\s*%/g;
+        while ((m = re.exec(log)) !== null) pct = parseInt(m[1], 10);
+        if (s === "done") return { state: "done", pct: 100 };
+        if (s === "error") return { state: "error", log: log };
+        return { state: "running", pct: pct };
+    }
+
+    function unescapeJsonText(s) {
+        return s.replace(/\\u([0-9a-fA-F]{4})/g, function (a, h) { return String.fromCharCode(parseInt(h, 16)); })
+            .replace(/\\n/g, " ").replace(/\\t/g, " ").replace(/\\"/g, "\"").replace(/\\\//g, "/").replace(/\\\\/g, "\\");
+    }
+
+    // Lit out.json -> [{ t: secondes, w: "mot" }]
+    function readWhisperWords(job) {
+        var txt = readFileQuiet(new File(job.fsName + "/out.json"));
+        var re = /"offsets"\s*:\s*\{\s*"from"\s*:\s*(\d+)\s*,\s*"to"\s*:\s*(\d+)\s*\}\s*,\s*"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+        var words = [], m;
+        while ((m = re.exec(txt)) !== null) {
+            var w = trim(unescapeJsonText(m[3]));
+            if (!w) continue;
+            if (/[\[\]\(\)\*♪♫]/.test(w)) continue; // [Musique], (rires), ♪
+            w = w.replace(/^[^\wÀ-ÿ']+|[^\wÀ-ÿ']+$/g, "");
+            if (!w) continue;
+            words.push({ t: parseInt(m[1], 10) / 1000, w: w });
+        }
+        return words;
+    }
+
+    // Pose un marqueur par mot sur le calque de la musique
+    function placeWordMarkers(layer, words, replace) {
+        var mk = layer.property("ADBE Marker");
+        if (replace) { while (mk.numKeys > 0) mk.removeKey(1); }
+        var k = 1;
+        try { k = layer.stretch / 100; } catch (e) {}
+        var times = [], values = [];
+        var last = -1;
+        for (var i = 0; i < words.length; i++) {
+            var t = layer.startTime + words[i].t * k;
+            if (t <= last + 0.001) t = last + 0.01; // jamais deux marqueurs au même moment
+            last = t;
+            times.push(t);
+            values.push(new MarkerValue(words[i].w));
+        }
+        if (times.length) {
+            try { mk.setValuesAtTimes(times, values); }
+            catch (e2) { for (var j = 0; j < times.length; j++) mk.setValueAtTime(times[j], values[j]); }
+        }
+        return times.length;
     }
 
     function createLyrics(comp, rawText, fontSize, preset) {
@@ -2013,6 +2236,9 @@
         var pLyr = addSection(pageIntro, "LYRICS");
         var tLyr = pLyr.add("statictext", undefined, "Un mot = un texte, calé sur un marqueur");
         paintText(tLyr, THEME.label);
+        var btnDetect = themeButton(pLyr.add("button", undefined, "Détecter les paroles de la musique"));
+        btnDetect.preferredSize.height = 26;
+        btnDetect.helpTip = "Sélectionne ta musique dans la timeline : l'IA pose un marqueur sur chaque mot et remplit la zone ci-dessous. Si tu as déjà collé les paroles, elles l'aident.";
         var etLyrics = pLyr.add("edittext", undefined, "", { multiline: true, scrolling: true, wantReturn: true });
         etLyrics.preferredSize = [260, 110];
 
@@ -2190,6 +2416,113 @@
                 }
             }
         }
+
+        // ---------- Détection des paroles ----------
+        var det = { task: null, phase: "", layer: null, audio: null, hint: "", job: null };
+
+        function detStop(msg) {
+            if (det.task !== null) { try { app.cancelTask(det.task); } catch (e) {} }
+            det.task = null;
+            det.phase = "";
+            btnDetect.text = "Détecter les paroles de la musique";
+            if (msg) status.text = msg;
+        }
+
+        function detStartJob() {
+            det.phase = "job";
+            det.job = startWhisperJob(det.audio, det.hint);
+            status.text = "Analyse de la musique : 0 %";
+        }
+
+        function detFinish() {
+            var words = readWhisperWords(det.job);
+            if (!words.length) { detStop(); alert("Aucun mot détecté dans cette musique."); return; }
+            var layer = det.layer;
+            var replace = false;
+            try {
+                var mk = layer.property("ADBE Marker");
+                if (mk.numKeys > 0) replace = confirm("La musique a déjà " + mk.numKeys + " marqueur(s).\nLes remplacer par les mots détectés ?");
+            } catch (e0) {}
+            app.beginUndoGroup("Détecter les paroles");
+            try {
+                var n = placeWordMarkers(layer, words, replace);
+                var list = [];
+                for (var i = 0; i < words.length; i++) list.push(words[i].w);
+                etLyrics.text = list.join(" ");
+                try {
+                    var comp = layer.containingComp;
+                    for (var j = 1; j <= comp.numLayers; j++) comp.layer(j).selected = false;
+                    layer.selected = true;
+                } catch (eSel) {}
+                detStop(n + " mot(s) détecté(s) et marqués. Corrige les mots si besoin puis clique sur « Créer les paroles ».");
+            } catch (e) {
+                detStop();
+                alert("Erreur : " + e.message);
+            } finally {
+                app.endUndoGroup();
+            }
+        }
+
+        $.global.__auraDetectPoll = function () {
+            try {
+                if (det.phase === "setup") {
+                    var s = readSetupState();
+                    if (s.state === "error") { detStop(); alert("Le téléchargement du moteur a échoué (" + s.msg + ").\nVérifie ta connexion internet puis réessaie."); return; }
+                    if (s.state === "done") { detStartJob(); return; }
+                    status.text = (s.state === "model") ? "Téléchargement du modèle IA : " + s.pct + " % (une seule fois)" : "Téléchargement du moteur (une seule fois)...";
+                    return;
+                }
+                if (det.phase === "job") {
+                    var j = readJobState(det.job);
+                    if (j.state === "done") { detFinish(); return; }
+                    if (j.state === "error") {
+                        detStop();
+                        var tail = String(j.log || "").replace(/\s+$/, "");
+                        if (tail.length > 400) tail = tail.substring(tail.length - 400);
+                        alert("L'analyse a échoué.\n\n" + tail);
+                        return;
+                    }
+                    status.text = "Analyse de la musique : " + j.pct + " %  (After Effects reste utilisable)";
+                }
+            } catch (e) {
+                detStop();
+            }
+        };
+
+        btnDetect.onClick = function () {
+            if (det.phase) {
+                stopWhisper();
+                detStop("Analyse annulée.");
+                return;
+            }
+            if (!isWindows()) { alert("La détection des paroles fonctionne pour l'instant sur Windows."); return; }
+            var comp = getActiveComp();
+            if (!comp) { alert("Ouvre d'abord une composition."); return; }
+            var layer = null;
+            var sel = comp.selectedLayers;
+            for (var i = 0; i < sel.length; i++) {
+                try { if (sel[i].hasAudio && sel[i].source && sel[i].source.file) { layer = sel[i]; break; } } catch (e) {}
+            }
+            if (!layer) { alert("Sélectionne ta musique dans la timeline (le calque audio)."); return; }
+            var f = layer.source.file;
+            if (!WH.audioExt.test(f.name)) {
+                alert("Format non pris en charge : " + decodeURI(f.name) + "\n\nUtilise un fichier MP3, WAV, FLAC ou OGG.");
+                return;
+            }
+            det.layer = layer;
+            det.audio = f;
+            det.hint = etLyrics.text;
+            btnDetect.text = "Annuler l'analyse";
+            if (whisperInstalled()) {
+                detStartJob();
+            } else {
+                if (!confirm("Première utilisation : AuraScript va télécharger le moteur de reconnaissance des paroles (environ 200 Mo, une seule fois).\n\nContinuer ?")) { detStop(); return; }
+                det.phase = "setup";
+                startWhisperSetup();
+                status.text = "Téléchargement du moteur (une seule fois)...";
+            }
+            det.task = app.scheduleTask("try { $.global.__auraDetectPoll(); } catch (e) {}", 1000, true);
+        };
 
         btnLyrics.onClick = function () {
             var comp = getActiveComp();
