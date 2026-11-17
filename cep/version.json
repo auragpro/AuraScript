@@ -1,5 +1,5 @@
 {
-  "version": "3.4.7",
+  "version": "3.4.8",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,7 +9,6 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "Bouton « Ajuster à la compo » retiré",
-    "Menu Thème : défilement corrigé (plus rien de caché) et barre de défilement sombre"
+    "« Texte incrustation » (sous Lyrics) : biseautage et estampage + mode de fusion Incrustation (le texte devient transparent)"
   ]
 }
