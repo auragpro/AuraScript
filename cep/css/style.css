@@ -480,3 +480,4 @@ body.anim-on.edge.anim-diag .btn::before, body.anim-on.edge.anim-diag .tab::befo
 .ed-item.last { border-color: rgba(var(--acc-rgb), .8); box-shadow: 0 0 8px var(--glow-soft); }
 .ed-grid.deleting .ed-item { border-style: dashed; }
 .ed-item.picked { background: #5a2323; border-color: #e05a4a; border-style: solid !important; color: #fff; }
+.ed-grid .fx-empty { grid-column: 1 / -1; }
