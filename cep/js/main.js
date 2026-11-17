@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.2.1";
+    var VERSION = "3.2.2";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -102,7 +102,8 @@
             { id: "gold", name: "Or", acc: [255, 202, 96], acc2: "#fff1b8", tint: "#33270f" },
             { id: "ice", name: "Glace", acc: [228, 232, 245], acc2: "#ffffff", tint: "#24252e" }
         ];
-        var DEF = { id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45 };
+        var DEF = { id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45, btn: "dark", btnHex: "#3a2a6a", btnA: 100 };
+        var BTN_SW = ["#2a2a33", "#3a2a6a", "#1f3a66", "#165a5a", "#1f5a33", "#6a3a14", "#6a1f2e", "#55204f"];
         var BG_SW = ["#000000", "#0d0d10", "#101826", "#0f1f2e", "#1a1030", "#2a1240", "#0f2418", "#2a0f14"];
         var st = {};
         function load() { try { st = JSON.parse(localStorage.getItem("aura.theme") || "{}"); } catch (e) { st = {}; } for (var k in DEF) if (st[k] === undefined) st[k] = DEF[k]; }
@@ -126,8 +127,22 @@
             r.setProperty("--fs", st.fs + "px");
             document.body.classList.toggle("compact", !!st.compact);
             applyBg();
+            applyBtn(t);
             window.__glowColor = gk > 0 ? "rgba(" + t.acc.join(",") + "," + Math.min(1, 0.75 * gk) + ")" : null;
             try { requestAnimationFrame(function () { drawEditor(); drawThumbs(); }); } catch (e) {}
+        }
+        // boutons : sombres, couleur du thème ou couleur perso, avec opacité réglable
+        function applyBtn(t) {
+            var r = document.documentElement.style, c;
+            if (st.btn === "theme") c = mix([20, 19, 26], t.acc, 0.38);
+            else if (st.btn === "custom" && hexRgb(st.btnHex)) c = hexRgb(st.btnHex);
+            else c = [32, 31, 39];
+            var c2 = mix(c, [0, 0, 0], 0.25);
+            var lum = (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255;
+            r.setProperty("--btn-rgb", c.join(", "));
+            r.setProperty("--btn-rgb2", c2.join(", "));
+            r.setProperty("--btn-a", String(Math.max(0, Math.min(1, st.btnA / 100))));
+            r.setProperty("--btn-text", lum > 0.62 && st.btnA > 45 ? "#15131c" : "#eceaf6");
         }
         // fond : couleur du thème, couleur unie, dégradé ou image
         function fileUrl(p) { return "file:///" + encodeURI(String(p).replace(/\\/g, "/")).replace(/#/g, "%23").replace(/\?/g, "%3F"); }
@@ -158,6 +173,10 @@
             if (document.activeElement !== $("thBg1")) $("thBg1").value = st.bg1 || "";
             if (document.activeElement !== $("thBg2")) $("thBg2").value = st.bg2 || "";
             $("thBgDim").value = st.bgDim; $("thBgDimV").textContent = st.bgDim + "%";
+            Array.prototype.forEach.call(document.querySelectorAll("#thBtnMode button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === st.btn); });
+            $("thBtnCustom").classList.toggle("hidden", st.btn !== "custom");
+            if (document.activeElement !== $("thBtnHex")) $("thBtnHex").value = st.btnHex || "";
+            $("thBtnA").value = st.btnA; $("thBtnAV").textContent = st.btnA + "%";
             $("thBgPick").textContent = st.bgImg ? "Image : " + st.bgImg.split(/[\\\/]/).pop() : "Choisir une image...";
         }
         function set(k, v) { st[k] = v; save(); apply(); sync(); }
@@ -190,6 +209,16 @@
             $("thBg1").addEventListener("input", function () { var v = this.value.trim(); if (hexRgb(v)) set("bg1", v.charAt(0) === "#" ? v : "#" + v); });
             $("thBg2").addEventListener("input", function () { var v = this.value.trim(); if (hexRgb(v)) set("bg2", v.charAt(0) === "#" ? v : "#" + v); });
             $("thBgDim").addEventListener("input", function () { set("bgDim", Number(this.value)); });
+            Array.prototype.forEach.call(document.querySelectorAll("#thBtnMode button"), function (b) {
+                b.onclick = function () { set("btn", b.getAttribute("data-m")); };
+            });
+            BTN_SW.forEach(function (c) {
+                var b = document.createElement("button"); b.style.background = c; b.title = c;
+                b.onclick = function () { st.btnHex = c; set("btn", "custom"); };
+                $("thBtnSw").appendChild(b);
+            });
+            $("thBtnHex").addEventListener("input", function () { var v = this.value.trim(); if (hexRgb(v)) { st.btnHex = v.charAt(0) === "#" ? v : "#" + v; set("btn", "custom"); } });
+            $("thBtnA").addEventListener("input", function () { set("btnA", Number(this.value)); });
             $("thBgPick").onclick = function () {
                 host("bgPickImage").then(function (r) {
                     if (r && r.ok && r.data) { st.bgImg = r.data; st.bg = "image"; save(); apply(); sync(); }
