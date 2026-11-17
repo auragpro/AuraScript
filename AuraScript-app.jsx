@@ -1,8 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.8.3
-// nouveautes: Colle tes paroles dans la zone Lyrics : l'IA trouve quand chacun de TES mots est chanté et pose les marqueurs avec tes mots
-// nouveautes: Zone vide : l'IA écrit elle-même les paroles qu'elle entend
-// nouveautes: Correction : la voix n'était plus reconnue (« aucune parole ») et le pourcentage restait à 0 %
+// version: 1.8.4
+// nouveautes: Détection des paroles bien meilleure : nouveau modèle IA « large-v3-turbo » (téléchargé une seule fois, ~550 Mo)
+// nouveautes: Plus rapide : seule la partie gardée de la musique est analysée (avec un peu de marge autour)
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -667,9 +666,10 @@
     var WH = {
         dir: new Folder(Folder.userData.fsName + "/AuraScript/whisper"),
         binUrl: "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.2/whisper-bin-x64.zip",
-        modelUrl: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
-        modelName: "ggml-small-q5_1.bin",
-        modelSize: 190085487,
+        models: {
+            turbo: { name: "ggml-large-v3-turbo-q5_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin", size: 574000000, min: 500000000, dtw: "large.v3.turbo", label: "~550 Mo" },
+            small: { name: "ggml-small-q5_1.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin", size: 190085487, min: 180000000, dtw: "small", label: "~200 Mo" }
+        },
         audioExt: /\.(mp3|wav|flac|ogg)$/i
     };
 
@@ -711,9 +711,13 @@
         return null;
     }
 
-    function whisperInstalled() {
-        var m = whFile(WH.modelName);
-        return !!(findWhisperExe(new Folder(WH.dir.fsName + "/bin"), 0) && m.exists && m.length > WH.modelSize * 0.95);
+    function whisperBinInstalled() {
+        return !!findWhisperExe(new Folder(WH.dir.fsName + "/bin"), 0);
+    }
+
+    function modelInstalled(model) {
+        var m = whFile(model.name);
+        return m.exists && m.length > model.min;
     }
 
     // Lance un .bat complètement détaché d'After Effects (caché, priorité basse).
@@ -732,7 +736,7 @@
         if (!vbs.exists || !vbs.execute()) bat.execute();
     }
 
-    function startWhisperSetup() {
+    function startWhisperSetup(needBin, model) {
         if (!WH.dir.exists) WH.dir.create();
         var st = whFile("setup-status.txt");
         if (st.exists) st.remove();
@@ -742,33 +746,36 @@
             "@echo off",
             "chcp 65001 >nul",
             'cd /d "%~dp0"',
-            "echo bin> setup-status.txt",
-            'curl.exe -s -L --fail -o whisper-bin.zip "' + WH.binUrl + '"',
-            "if errorlevel 1 (echo error=bin> setup-status.txt & exit /b 1)",
-            'if not exist bin mkdir bin',
-            'tar -xf whisper-bin.zip -C bin',
-            "if errorlevel 1 (echo error=unzip> setup-status.txt & exit /b 1)",
-            "del /q whisper-bin.zip",
-            "echo model> setup-status.txt",
-            'curl.exe -s -L --fail -o model.part "' + WH.modelUrl + '"',
-            "if errorlevel 1 (echo error=model> setup-status.txt & exit /b 1)",
-            'move /y model.part ' + WH.modelName + ' >nul',
-            "echo done> setup-status.txt",
-            "exit",
-            ""
+            "echo bin> setup-status.txt"
         ];
+        if (needBin) {
+            L.push('curl.exe -s -L --fail -o whisper-bin.zip "' + WH.binUrl + '"');
+            L.push("if errorlevel 1 (echo error=bin> setup-status.txt & exit /b 1)");
+            L.push('if not exist bin mkdir bin');
+            L.push('tar -xf whisper-bin.zip -C bin');
+            L.push("if errorlevel 1 (echo error=unzip> setup-status.txt & exit /b 1)");
+            L.push("del /q whisper-bin.zip");
+        }
+        L.push("echo model> setup-status.txt");
+        L.push('if exist model.part del /q model.part');
+        L.push('curl.exe -s -L --fail -o model.part "' + model.url + '"');
+        L.push("if errorlevel 1 (echo error=model> setup-status.txt & exit /b 1)");
+        L.push('move /y model.part ' + model.name + ' >nul');
+        L.push("echo done> setup-status.txt");
+        L.push("exit");
+        L.push("");
         writeFileText(bat, L.join("\r\n"));
         launchBat(bat);
     }
 
     // Etat de l'installation : { state: "bin"|"model"|"done"|"error", pct, msg }
-    function readSetupState() {
+    function readSetupState(model) {
         var s = String(readFileQuiet(whFile("setup-status.txt"))).replace(/\s+$/, "");
         if (/^error/.test(s)) return { state: "error", msg: s };
         if (s === "done") return { state: "done" };
         if (s === "model") {
             var part = whFile("model.part");
-            var pct = part.exists ? Math.floor(part.length / WH.modelSize * 100) : 0;
+            var pct = part.exists ? Math.floor(part.length / model.size * 100) : 0;
             return { state: "model", pct: Math.min(99, pct) };
         }
         return { state: "bin", pct: 0 };
@@ -795,7 +802,7 @@
         return s;
     }
 
-    function startWhisperJob(audioFile, lyricsHint, offMs, durMs) {
+    function startWhisperJob(audioFile, lyricsHint, offMs, durMs, model) {
         var exe = findWhisperExe(new Folder(WH.dir.fsName + "/bin"), 0);
         var job = new Folder(WH.dir.fsName + "/job");
         if (!job.exists) job.create();
@@ -812,8 +819,9 @@
         var audioPath = audioFile.fsName;
         try { if (audioFile.copy(audioCopy.fsName)) audioPath = audioCopy.fsName; } catch (eC) {}
 
-        var args = '-m "' + whFile(WH.modelName).fsName + '" -f "' + audioPath + '"' +
-            " -l auto -t " + threads + " -ml 1 -sow -ojf -pp -sns -dtw small -nfa" +
+        var args = '-m "' + whFile(model.name).fsName + '" -f "' + audioPath + '"' +
+            " -l auto -t " + threads + " -ml 1 -sow -ojf -pp -sns -dtw " + model.dtw + " -nfa" +
+            (offMs > 0 ? " -ot " + offMs : "") + (durMs > 0 ? " -d " + durMs : "") +
             ' -of "' + job.fsName + '\\out"';
         var hint = promptFromLyrics(lyricsHint);
         if (hint) args += ' --prompt "' + hint + '"';
@@ -2572,7 +2580,10 @@
             var srcOut = Math.max(srcIn + 0.2, (L.outPoint - L.startTime) / k);
             det.srcIn = srcIn;
             det.srcOut = srcOut;
-            det.job = startWhisperJob(det.audio, det.hint, 0, 0);
+            // marge de 5 s autour de la partie gardée : l'IA a du contexte, et on n'analyse pas toute la musique
+            var pad = 5;
+            var a0 = Math.max(0, srcIn - pad);
+            det.job = startWhisperJob(det.audio, det.hint, Math.round(a0 * 1000), Math.round((srcOut + pad - a0) * 1000), det.model);
             status.text = "Analyse de la musique en cours...";
         }
 
@@ -2627,7 +2638,7 @@
         $.global.__auraDetectPoll = function () {
             try {
                 if (det.phase === "setup") {
-                    var s = readSetupState();
+                    var s = readSetupState(det.model);
                     if (s.state === "error") { detStop(); alert("Le téléchargement du moteur a échoué (" + s.msg + ").\nVérifie ta connexion internet puis réessaie."); return; }
                     if (s.state === "done") { detStartJob(); return; }
                     status.text = (s.state === "model") ? "Téléchargement du modèle IA : " + s.pct + " % (une seule fois)" : "Téléchargement du moteur (une seule fois)...";
@@ -2675,13 +2686,21 @@
             det.audio = f;
             det.hint = etLyrics.text;
             btnDetect.text = "Annuler l'analyse";
-            if (whisperInstalled()) {
+            var hasBin = whisperBinInstalled();
+            var turbo = WH.models.turbo, small = WH.models.small;
+            if (hasBin && modelInstalled(turbo)) {
+                det.model = turbo;
+                detStartJob();
+            } else if (hasBin && modelInstalled(small) &&
+                       !confirm("Nouveau modèle IA disponible : il reconnaît beaucoup mieux les paroles chantées et rappées.\n\nLe télécharger maintenant (" + turbo.label + ", une seule fois) ?\n\nNon = utiliser l'ancien modèle pour cette fois.")) {
+                det.model = small;
                 detStartJob();
             } else {
-                if (!confirm("Première utilisation : AuraScript va télécharger le moteur de reconnaissance des paroles (environ 200 Mo, une seule fois).\n\nContinuer ?")) { detStop(); return; }
+                if (!(hasBin && modelInstalled(small)) && !confirm("Première utilisation : AuraScript va télécharger le moteur de reconnaissance des paroles (" + turbo.label + ", une seule fois).\n\nContinuer ?")) { detStop(); return; }
+                det.model = turbo;
                 det.phase = "setup";
-                startWhisperSetup();
-                status.text = "Téléchargement du moteur (une seule fois)...";
+                startWhisperSetup(!hasBin, turbo);
+                status.text = "Téléchargement du modèle IA (une seule fois)...";
             }
             det.task = app.scheduleTask("try { $.global.__auraDetectPoll(); } catch (e) {}", 1000, true);
         };
