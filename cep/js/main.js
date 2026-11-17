@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.4.9";
+    var VERSION = "3.5.0";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -735,6 +735,171 @@
         return { init: init };
     })();
     Fx.init();
+
+    // =====================================================================
+    // EDGE DETECT TEXT (onglet Texte) : presets "contours + texte + cache"
+    // fichier : %APPDATA%\AuraScript\edge-text.json  { texts: [...], presets: [...] }
+    // =====================================================================
+    var Edge = (function () {
+        var MATTES = { alpha: "Alpha", alphaInv: "Alpha inv.", luma: "Luma", lumaInv: "Luma inv." };
+        var data = null, editId = null, delMode = false, picked = {}, last = null;
+        function file() { return path.join(process.env.APPDATA || os.homedir(), "AuraScript", "edge-text.json"); }
+        function defaults() {
+            return {
+                texts: ["EDGE", "AURA"],
+                presets: [
+                    { id: "e1", name: "Edge blanc", text: "EDGE", matte: "alpha", invert: false, blend: 0, width: 80, ffx: "" },
+                    { id: "e2", name: "Edge néon", text: "EDGE", matte: "alpha", invert: true, blend: 0, width: 80, ffx: "" }
+                ]
+            };
+        }
+        function load() {
+            try { data = JSON.parse(fs.readFileSync(file(), "utf8")); } catch (e) { data = null; }
+            if (!data || !Array.isArray(data.presets)) data = defaults();
+            if (!Array.isArray(data.texts)) data.texts = [];
+        }
+        function save() {
+            try { fs.mkdirSync(path.dirname(file()), { recursive: true }); fs.writeFileSync(file(), JSON.stringify(data, null, 1), "utf8"); }
+            catch (e) { status("Impossible d'enregistrer les presets EDGE : " + e.message); }
+        }
+        function find(id) { for (var i = 0; i < data.presets.length; i++) if (data.presets[i].id === id) return data.presets[i]; return null; }
+        function ffxList() {
+            try { var d = JSON.parse(fs.readFileSync(path.join(process.env.APPDATA || os.homedir(), "AuraScript", "fx-presets.json"), "utf8")); return (d.items || []).slice().sort(function (a, b) { return a.name.localeCompare(b.name); }); }
+            catch (e) { return []; }
+        }
+
+        // ---- application : un clic = tout est fait dans After Effects ----
+        function apply(p) {
+            last = p.id; render();
+            status("Application de « " + p.name + " »...");
+            return host("edgeText", J({ name: p.name, text: p.text, matte: p.matte, invert: !!p.invert, blend: p.blend, width: p.width, ffx: p.ffx || "" })).then(function (r) {
+                if (!r.ok && /Sélectionne d'abord la vid/.test(r.msg || "")) { status("Preset prêt. " + r.msg); return r; }
+                return showResult(r);
+            });
+        }
+
+        // ---- liste des presets ----
+        function render() {
+            var box = $("edList"); box.innerHTML = "";
+            if (!data.presets.length) { box.innerHTML = '<div class="fx-empty">Aucun preset. Clique sur « + » pour en créer un.</div>'; return; }
+            data.presets.forEach(function (p) {
+                var b = document.createElement("button");
+                b.className = "btn ed-item" + (p.id === last ? " last" : "") + (delMode && picked[p.id] ? " picked" : "");
+                b.title = p.name + "\nTexte : " + p.text + "\nCache : " + (MATTES[p.matte] || "Alpha") + (p.invert ? " · contours inversés" : "") +
+                    (p.ffx ? "\nEffet : " + path.basename(p.ffx).replace(/\.ffx$/i, "") : "") + "\n\nClic : appliquer · Clic droit : modifier";
+                var nm = document.createElement("span"); nm.className = "nm"; nm.textContent = p.name;
+                var sub = document.createElement("span"); sub.className = "sub"; sub.textContent = "« " + p.text + " » · " + (MATTES[p.matte] || "Alpha");
+                b.appendChild(nm); b.appendChild(sub);
+                b.addEventListener("click", function () {
+                    if (delMode) { if (picked[p.id]) delete picked[p.id]; else picked[p.id] = true; b.classList.toggle("picked", !!picked[p.id]); updDel(); return; }
+                    apply(p);
+                });
+                b.addEventListener("contextmenu", function (e) { e.preventDefault(); if (!delMode) openForm(p); });
+                box.appendChild(b);
+            });
+        }
+
+        // ---- textes (liste déroulante + puces cliquables) ----
+        function renderTexts(sel) {
+            var s = $("edText"); s.innerHTML = "";
+            data.texts.forEach(function (t) { var o = document.createElement("option"); o.value = t; o.textContent = t; s.appendChild(o); });
+            if (!data.texts.length) { var o = document.createElement("option"); o.value = ""; o.textContent = "(ajoute un texte avec +)"; s.appendChild(o); }
+            if (sel !== undefined && data.texts.indexOf(sel) >= 0) s.value = sel;
+            var c = $("edChips"); c.innerHTML = "";
+            data.texts.forEach(function (t) {
+                var b = document.createElement("button"); b.className = "ed-chip" + (t === s.value ? " on" : ""); b.textContent = t; b.title = "Lier ce texte au preset";
+                b.onclick = function () { s.value = t; renderTexts(t); };
+                c.appendChild(b);
+            });
+        }
+        function addText() {
+            modal("Nouveau texte (il sera ajouté à la liste) :", { input: "" }).then(function (v) {
+                v = (v || "").replace(/^\s+|\s+$/g, "");
+                if (!v) return;
+                if (data.texts.indexOf(v) < 0) data.texts.push(v);
+                save(); renderTexts(v);
+            });
+        }
+        function delText() {
+            var v = $("edText").value; if (!v) return;
+            data.texts = data.texts.filter(function (t) { return t !== v; });
+            save(); renderTexts(data.texts[0]);
+        }
+
+        // ---- formulaire "+" (création) / clic droit (modification) ----
+        function setSeg(id, m) { [].forEach.call($(id).querySelectorAll("button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === m); }); }
+        function segVal(id) { var b = $(id).querySelector("button.on"); return b ? b.getAttribute("data-m") : "alpha"; }
+        function openForm(p) {
+            if (delMode) setDel(false);
+            editId = p ? p.id : null;
+            $("edFormTitle").textContent = p ? "Modifier « " + p.name + " »" : "Nouveau preset";
+            $("edSave").textContent = p ? "Enregistrer et appliquer" : "Créer et appliquer";
+            $("edName").value = p ? p.name : "";
+            if (p && p.text && data.texts.indexOf(p.text) < 0) data.texts.push(p.text);
+            renderTexts(p ? p.text : data.texts[0]);
+            setSeg("edMatte", p ? p.matte : "alpha");
+            $("edInvert").checked = p ? !!p.invert : false;
+            $("edBlend").value = p ? p.blend : 0; $("edWidth").value = p ? p.width : 80; vals();
+            var s = $("edFfx"); s.innerHTML = '<option value="">Aucun</option>';
+            ffxList().forEach(function (it) { var o = document.createElement("option"); o.value = it.path; o.textContent = it.name; s.appendChild(o); });
+            if (p && p.ffx) { if (![].some.call(s.options, function (o) { return o.value === p.ffx; })) { var o = document.createElement("option"); o.value = p.ffx; o.textContent = path.basename(p.ffx).replace(/\.ffx$/i, ""); s.appendChild(o); } s.value = p.ffx; }
+            $("edForm").classList.remove("hidden");
+            $("edAdd").classList.add("on");
+            setTimeout(function () { $("edName").focus(); }, 30);
+        }
+        function closeForm() { $("edForm").classList.add("hidden"); $("edAdd").classList.remove("on"); editId = null; }
+        function vals() { $("edBlendV").textContent = $("edBlend").value + " %"; $("edWidthV").textContent = $("edWidth").value + " %"; }
+        function submit() {
+            var text = $("edText").value;
+            if (!text) { modal("Ajoute d'abord un texte avec le bouton + à côté de « Texte ».", { cancel: false }); return; }
+            var name = $("edName").value.replace(/^\s+|\s+$/g, "") || ("Edge " + (data.presets.length + 1));
+            var p = editId ? find(editId) : null;
+            if (!p) { p = { id: "e" + Date.now().toString(36) }; data.presets.push(p); }
+            p.name = name; p.text = text; p.matte = segVal("edMatte"); p.invert = $("edInvert").checked;
+            p.blend = +$("edBlend").value; p.width = +$("edWidth").value; p.ffx = $("edFfx").value;
+            save(); closeForm(); render();
+            apply(p);   // le nouveau preset s'applique tout de suite sur la vidéo sélectionnée
+        }
+
+        // ---- suppression ----
+        function updDel() {
+            var n = Object.keys(picked).length;
+            $("edDelInfo").textContent = n ? n + " preset(s) sélectionné(s)" : "Clique sur les presets à supprimer";
+            $("edDelOk").disabled = !n; $("edDelOk").textContent = n ? "Supprimer (" + n + ")" : "Supprimer";
+        }
+        function setDel(on) {
+            delMode = on; picked = {};
+            if (on) closeForm();
+            $("edTrash").classList.toggle("on", on); $("edDelBar").classList.toggle("hidden", !on); $("edList").classList.toggle("deleting", on);
+            updDel(); render();
+        }
+
+        function init() {
+            if (!fs) { $("edList").innerHTML = '<div class="fx-empty">Cette fonction a besoin de Node.js.</div>'; return; }
+            load(); render();
+            $("edAdd").onclick = function () { if (!$("edForm").classList.contains("hidden") && !editId) closeForm(); else openForm(null); };
+            $("edCancel").onclick = closeForm;
+            $("edSave").onclick = submit;
+            $("edName").onkeydown = function (e) { if (e.key === "Enter") submit(); if (e.key === "Escape") closeForm(); };
+            $("edTextAdd").onclick = addText;
+            $("edTextDel").onclick = delText;
+            $("edText").onchange = function () { renderTexts(this.value); };
+            [].forEach.call($("edMatte").querySelectorAll("button"), function (b) { b.onclick = function () { setSeg("edMatte", b.getAttribute("data-m")); }; });
+            $("edBlend").oninput = vals; $("edWidth").oninput = vals;
+            $("edTrash").onclick = function () { setDel(!delMode); };
+            $("edDelCancel").onclick = function () { setDel(false); };
+            $("edDelOk").onclick = function () {
+                var n = Object.keys(picked).length; if (!n) return;
+                modal("Supprimer " + n + " preset(s) EDGE DETECT TEXT ?").then(function (yes) {
+                    if (!yes) return;
+                    data.presets = data.presets.filter(function (p) { return !picked[p.id]; });
+                    save(); setDel(false); status(n + " preset(s) supprimé(s).");
+                });
+            };
+        }
+        return { init: init };
+    })();
+    Edge.init();
 
     // ---------- sélecteur de couleur (thème sombre) ----------
     var Picker = (function () {
