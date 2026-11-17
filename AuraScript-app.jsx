@@ -1,6 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.6.7
-// nouveautes: Correction Déprecomp : il ne touche plus aux autres calques de la timeline, seul le contenu du precomp ressort, au même endroit
+// version: 1.6.8
+// nouveautes: INTRO : le choix du preset .ffx est maintenant à côté de la taille, sous les lyrics
+// nouveautes: Choisis « Aucun preset » pour créer les paroles sans preset
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -1920,39 +1921,35 @@
         var gOpt = pLyr.add("group");
         gOpt.orientation = "row";
         gOpt.alignChildren = ["left", "center"];
-        gOpt.spacing = 6;
+        gOpt.spacing = 4;
         var tSize = gOpt.add("statictext", undefined, "Taille");
         paintText(tSize, THEME.label);
         var etSize = gOpt.add("edittext", undefined, "150");
         etSize.characters = 4;
-        var chkLyrPreset = gOpt.add("checkbox", undefined, "Avec le preset");
-        chkLyrPreset.value = false;
-        chkLyrPreset.helpTip = "Applique le preset choisi dans la section Presets aux textes créés";
-        paintText(chkLyrPreset, THEME.label);
-
-        var btnLyrics = themeButton(pLyr.add("button", undefined, "Créer les paroles"), "primary");
-        btnLyrics.preferredSize.height = 28;
-
-        // ---------- Presets ----------
-        var pPre = addSection(pageIntro, "PRESETS  .FFX");
-        var gPre = pPre.add("group");
-        gPre.orientation = "row";
-        gPre.alignChildren = ["fill", "center"];
-        gPre.spacing = 4;
-        var ddPreset = gPre.add("dropdownlist", undefined, []);
+        var ddPreset = gOpt.add("dropdownlist", undefined, []);
         ddPreset.alignment = ["fill", "center"];
-        ddPreset.preferredSize.width = 150;
-        var btnAddPreset = themeButton(gPre.add("button", undefined, "+ Preset"));
+        ddPreset.preferredSize.width = 128;
+        ddPreset.helpTip = "Preset .ffx appliqué aux textes créés (ou « Aucun preset »)";
+        var btnAddPreset = themeButton(gOpt.add("button", undefined, "+"));
         btnAddPreset.alignment = ["right", "center"];
-        btnAddPreset.preferredSize = [70, 24];
-        btnAddPreset.helpTip = "Ajouter un ou plusieurs fichiers .ffx à la liste";
-        var btnDelPreset = themeButton(gPre.add("button", undefined, "–"));
+        btnAddPreset.preferredSize = [26, 24];
+        btnAddPreset.helpTip = "Ajouter un ou plusieurs presets .ffx à la liste";
+        var btnDelPreset = themeButton(gOpt.add("button", undefined, "–"));
         btnDelPreset.alignment = ["right", "center"];
         btnDelPreset.preferredSize = [26, 24];
         btnDelPreset.helpTip = "Retirer le preset choisi de la liste";
-        var btnApply = themeButton(pPre.add("button", undefined, "Appliquer aux textes sélectionnés"));
-        btnApply.preferredSize.height = 26;
-        btnApply.helpTip = "Le preset démarre au début du texte et son animation est étirée jusqu'à la fin";
+
+        var gLyrBtns = pLyr.add("group");
+        gLyrBtns.orientation = "row";
+        gLyrBtns.alignChildren = ["fill", "center"];
+        gLyrBtns.spacing = 4;
+        var btnLyrics = themeButton(gLyrBtns.add("button", undefined, "Créer les paroles"), "primary");
+        btnLyrics.alignment = ["fill", "center"];
+        btnLyrics.preferredSize = [170, 28];
+        var btnApply = themeButton(gLyrBtns.add("button", undefined, "Appliquer"));
+        btnApply.alignment = ["right", "center"];
+        btnApply.preferredSize = [86, 28];
+        btnApply.helpTip = "Applique le preset choisi aux textes sélectionnés (étiré sur toute leur durée)";
 
         // ---------- Page Courbe ----------
         function setStatus(t) { status.text = t; }
@@ -1986,17 +1983,18 @@
 
         // ---------- Logique ----------
 
+        // Liste : « Aucun preset » puis les presets. selectIndex = index du preset (-1 = aucun)
         function refreshPresetList(selectIndex) {
             ddPreset.removeAll();
+            ddPreset.add("item", "Aucun preset");
             for (var i = 0; i < presets.length; i++) ddPreset.add("item", presets[i].name);
-            if (presets.length) {
-                if (selectIndex === undefined || selectIndex < 0 || selectIndex >= presets.length) selectIndex = 0;
-                ddPreset.selection = selectIndex;
-            }
+            if (selectIndex === undefined || selectIndex < -1 || selectIndex >= presets.length) selectIndex = -1;
+            ddPreset.selection = selectIndex + 1;
         }
 
         function selectedPreset() {
-            return ddPreset.selection ? presets[ddPreset.selection.index] : null;
+            if (!ddPreset.selection || ddPreset.selection.index < 1) return null;
+            return presets[ddPreset.selection.index - 1];
         }
 
         var SPAN_LABELS = { adjust: "Adjustment layer", "null": "Null", text: "Text" };
@@ -2100,8 +2098,7 @@
             if (!comp) { alert("Ouvre d'abord une composition."); return; }
             var size = parseFloat(etSize.text);
             if (isNaN(size) || size <= 0) size = 150;
-            var preset = chkLyrPreset.value ? selectedPreset() : null;
-            if (chkLyrPreset.value && !preset) { alert("Aucun preset : ajoute un fichier .ffx avec « + Preset »."); return; }
+            var preset = selectedPreset();
 
             app.beginUndoGroup("Créer les paroles");
             try {
@@ -2140,8 +2137,8 @@
         };
 
         btnDelPreset.onClick = function () {
-            if (!ddPreset.selection) return;
-            var idx = ddPreset.selection.index;
+            if (!ddPreset.selection || ddPreset.selection.index < 1) { alert("Choisis d'abord un preset dans la liste."); return; }
+            var idx = ddPreset.selection.index - 1;
             var p = presets[idx];
             if (!confirm("Retirer « " + p.name + " » de la liste ?\n(le fichier .ffx n'est pas supprimé)")) return;
             presets.splice(idx, 1);
@@ -2154,7 +2151,7 @@
             var comp = getActiveComp();
             if (!comp) { alert("Ouvre d'abord une composition."); return; }
             var preset = selectedPreset();
-            if (!preset) { alert("Ajoute d'abord un fichier .ffx avec « + Preset »."); return; }
+            if (!preset) { alert("Choisis un preset dans la liste (ajoute un .ffx avec « + »)."); return; }
 
             var sel = comp.selectedLayers;
             var texts = [];
@@ -2175,7 +2172,7 @@
         };
 
         loadPresets();
-        refreshPresetList(0);
+        refreshPresetList(-1);
 
         if (host) return win; // le lanceur s'occupe de la mise en page
 
