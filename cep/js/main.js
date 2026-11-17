@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.3.1";
+    var VERSION = "3.4.0";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -110,7 +110,7 @@
             { id: "gold", name: "Or", acc: [255, 202, 96], acc2: "#fff1b8", tint: "#33270f" },
             { id: "ice", name: "Glace", acc: [228, 232, 245], acc2: "#ffffff", tint: "#24252e" }
         ];
-        var DEF = { id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45, btn: "dark", btnHex: "#3a2a6a", btnA: 100 };
+        var DEF = { id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45, btn: "dark", btnHex: "#3a2a6a", btnA: 100, anim: true, animDir: "both", animSpd: 3 };
         var BTN_SW = ["#2a2a33", "#3a2a6a", "#1f3a66", "#165a5a", "#1f5a33", "#6a3a14", "#6a1f2e", "#55204f"];
         var BG_SW = ["#000000", "#0d0d10", "#101826", "#0f1f2e", "#1a1030", "#2a1240", "#0f2418", "#2a0f14"];
         var st = {};
@@ -129,11 +129,17 @@
             var t = current(), r = document.documentElement.style, gk = st.glow / 100;
             r.setProperty("--acc-rgb", t.acc.join(", "));
             r.setProperty("--acc2", t.acc2);
+            r.setProperty("--acc2-rgb", (hexRgb(t.acc2) || [143, 211, 255]).join(", "));
             r.setProperty("--tint", t.tint);
             r.setProperty("--gk", String(gk));
             r.setProperty("--rad", st.rad + "px");
             r.setProperty("--fs", st.fs + "px");
             document.body.classList.toggle("compact", !!st.compact);
+            var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+            var on = !!st.anim && !reduce;
+            document.body.classList.toggle("anim-on", on);
+            ["lr", "diag", "both"].forEach(function (d) { document.body.classList.toggle("anim-" + d, on && st.animDir === d); });
+            r.setProperty("--spd", String([0, 0.5, 0.75, 1, 1.4, 2][st.animSpd] || 1));
             applyBg();
             applyBtn(t);
             window.__glowColor = gk > 0 ? "rgba(" + t.acc.join(",") + "," + Math.min(1, 0.75 * gk) + ")" : null;
@@ -181,6 +187,9 @@
             if (document.activeElement !== $("thBg1")) $("thBg1").value = st.bg1 || "";
             if (document.activeElement !== $("thBg2")) $("thBg2").value = st.bg2 || "";
             $("thBgDim").value = st.bgDim; $("thBgDimV").textContent = st.bgDim + "%";
+            $("thAnim").checked = !!st.anim;
+            Array.prototype.forEach.call(document.querySelectorAll("#thAnimDir button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === st.animDir); });
+            $("thAnimSpd").value = st.animSpd; $("thAnimSpdV").textContent = ["", "Lent", "Doux", "Normal", "Vif", "Rapide"][st.animSpd] || "";
             Array.prototype.forEach.call(document.querySelectorAll("#thBtnMode button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === st.btn); });
             $("thBtnCustom").classList.toggle("hidden", st.btn !== "custom");
             if (document.activeElement !== $("thBtnHex")) $("thBtnHex").value = st.btnHex || "";
@@ -220,6 +229,11 @@
             Array.prototype.forEach.call(document.querySelectorAll("#thBtnMode button"), function (b) {
                 b.onclick = function () { set("btn", b.getAttribute("data-m")); };
             });
+            $("thAnim").addEventListener("change", function () { set("anim", this.checked); });
+            Array.prototype.forEach.call(document.querySelectorAll("#thAnimDir button"), function (b) {
+                b.onclick = function () { st.anim = true; set("animDir", b.getAttribute("data-m")); };
+            });
+            $("thAnimSpd").addEventListener("input", function () { set("animSpd", Number(this.value)); });
             BTN_SW.forEach(function (c) {
                 var b = document.createElement("button"); b.style.background = c; b.title = c;
                 b.onclick = function () { st.btnHex = c; set("btn", "custom"); };
