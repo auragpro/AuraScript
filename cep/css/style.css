@@ -441,3 +441,17 @@ body.anim-on.edge.anim-diag .btn::before, body.anim-on.edge.anim-diag .tab::befo
 .card::before { padding: 1px; }
 .th-sub { color: #8f8ba6; font-size: calc(var(--fs) - 1px); margin-bottom: -4px; }
 .th-seg.th-seg2 { grid-template-columns: repeat(2, 1fr); }
+
+/* 3.4.7 : menu Theme - defilement propre + barre de defilement sombre */
+.theme-pop { overflow-x: hidden; overflow-y: auto; padding-right: 6px; box-sizing: border-box; }
+.theme-pop > * { flex-shrink: 0; min-width: 0; }
+.theme-pop .th-row input[type=range] { min-width: 0; }
+.theme-pop::-webkit-scrollbar { width: 6px; height: 0; }
+.theme-pop::-webkit-scrollbar-track { background: transparent; margin: 8px 0; }
+.theme-pop::-webkit-scrollbar-thumb { background: #2b2933; border-radius: 3px; }
+.theme-pop::-webkit-scrollbar-thumb:hover { background: #3d3a48; }
+.theme-pop::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2b2933; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3d3a48; }
