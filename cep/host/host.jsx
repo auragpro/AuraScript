@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.0.6
+// version: 3.0.7
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1284,20 +1284,37 @@
         } catch (e) { return fail("Erreur : " + e.message); }
     };
 
+    // solide : meme fonctionnement que Text / Adjustment layer (a la duree du calque selectionne),
+    // ou sur toute la composition si rien n'est selectionne
     API.solid = function (hexJson) {
         try {
             var comp = needComp();
             var hex = String(arg(hexJson) || "#000000").replace("#", "");
             if (!/^[0-9a-fA-F]{6}$/.test(hex)) hex = "000000";
+            hex = hex.toUpperCase();
             var col = [parseInt(hex.substr(0, 2), 16) / 255, parseInt(hex.substr(2, 2), 16) / 255, parseInt(hex.substr(4, 2), 16) / 255];
-            var sel = comp.selectedLayers, top = null;
-            for (var i = 0; i < sel.length; i++) if (!top || sel[i].index < top.index) top = sel[i];
+            var sel = comp.selectedLayers, targets = [], i;
+            for (i = 0; i < sel.length; i++) targets.push(sel[i]);
             return undoable("Solide", function () {
-                var L = comp.layers.addSolid(col, "Solide #" + hex.toUpperCase(), comp.width, comp.height, comp.pixelAspect, comp.duration);
-                if (top) { try { L.moveBefore(top); } catch (e1) {} }
-                for (var j = 1; j <= comp.numLayers; j++) comp.layer(j).selected = false;
-                L.selected = true;
-                return ok("Solide #" + hex.toUpperCase() + " cr\u00e9\u00e9.");
+                var made = [];
+                function mk() { return comp.layers.addSolid(col, "Solide #" + hex, comp.width, comp.height, comp.pixelAspect, comp.duration); }
+                if (!targets.length) {
+                    var L0 = mk();
+                    L0.startTime = 0; L0.inPoint = 0; L0.outPoint = comp.duration;
+                    made.push(L0);
+                } else {
+                    for (i = 0; i < targets.length; i++) {
+                        var src = targets[i], inP = src.inPoint, outP = src.outPoint;
+                        if (outP - inP <= 0) continue;
+                        var L = mk();
+                        L.startTime = inP; L.inPoint = inP; L.outPoint = outP;
+                        L.moveBefore(src);
+                        made.push(L);
+                    }
+                }
+                deselectAll(comp);
+                for (i = 0; i < made.length; i++) made[i].selected = true;
+                return ok(made.length + " solide(s) #" + hex + " cr\u00e9\u00e9(s)" + (targets.length ? "." : " sur toute la composition."));
             });
         } catch (e) { return fail("Erreur : " + e.message); }
     };
