@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.5.3";
+    var VERSION = "3.5.4";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -770,7 +770,7 @@
         function apply(p) {
             last = p.id; render();
             status("Application de « " + p.name + " »...");
-            return host("edgeText", J({ name: p.name, text: p.text, matte: p.matte, width: p.width, ffx: p.ffx || "", videoKey: $("edVid").value, matteKey: $("edMat").value })).then(function (r) {
+            return host("edgeText", J({ name: p.name, text: p.text, matte: p.matte, width: p.width, ffx: p.ffx || "", videoKey: $("edVid").value, matteKey: $("edMat").value, precomp: $("edPrecomp").checked })).then(function (r) {
                 setTimeout(refreshLayers, 150);
                 if (!r.ok && /Sélectionne d'abord la vid/.test(r.msg || "")) { status("Preset prêt. " + r.msg); return r; }
                 return showResult(r);
@@ -906,6 +906,8 @@
             if (!fs) { $("edList").innerHTML = '<div class="fx-empty">Cette fonction a besoin de Node.js.</div>'; return; }
             load(); render(); refreshLayers();
             $("edRefresh").onclick = refreshLayers;
+            try { $("edPrecomp").checked = localStorage.getItem("aura.edPrecomp") === "1"; } catch (e) {}
+            $("edPrecomp").onchange = function () { try { localStorage.setItem("aura.edPrecomp", this.checked ? "1" : "0"); } catch (e) {} };
             $("edLink").addEventListener("mouseenter", refreshLayers);
             var tb = document.querySelector('.tab[data-page="intro"]'); if (tb) tb.addEventListener("click", refreshLayers);
             $("edAdd").onclick = function () { if (!$("edForm").classList.contains("hidden") && !editId) closeForm(); else openForm(null); };
