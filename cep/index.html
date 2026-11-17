@@ -167,7 +167,7 @@
         <button class="btn ed-hbtn fx-trash" id="edTrash" title="Supprimer des presets"><svg viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M6 1.5h4l.5 1H14v1.5H2V2.5h3.5zM3.2 5h9.6l-.7 9.1c-.05.8-.7 1.4-1.5 1.4H5.4c-.8 0-1.45-.6-1.5-1.4z"/></svg></button>
         <button class="btn primary ed-hbtn ed-plus" id="edAdd" title="Ajouter un de tes presets .ffx (il s'applique tout de suite sur la vidéo sélectionnée)">+</button>
       </div>
-      <div class="muted small-text">Ajoute tes presets avec « + ». Sélectionne ta vidéo puis clique sur un preset : ton effet apparaît à travers le texte.</div>
+      <div class="muted small-text">Ajoute tes presets avec « + ». Choisis la vidéo et le cache, puis clique sur un preset.</div>
       <div class="ed-link" id="edLink">
         <div class="ed-lrow"><label for="edVid">Vidéo</label><select id="edVid" title="La vidéo sur laquelle le preset s'applique"></select>
           <button class="btn square" id="edRefresh" title="Rafraîchir la liste des calques"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3.2h-3.2"/></svg></button></div>
@@ -183,20 +183,6 @@
           </div>
         </div>
         <div class="ed-field"><label for="edName">Nom</label><input id="edName" type="text" placeholder="(nom du fichier par défaut)" spellcheck="false" autocomplete="off"></div>
-        <div class="ed-field"><label for="edText">Texte</label>
-          <div class="row center ed-inline">
-            <select id="edText" class="grow"></select>
-            <button class="btn square" id="edTextAdd" title="Ajouter un texte à la liste">+</button>
-            <button class="btn square" id="edTextDel" title="Retirer ce texte de la liste">–</button>
-          </div>
-        </div>
-        <div class="ed-chips" id="edChips"></div>
-        <div class="ed-field"><label>Cache</label>
-          <div class="th-seg" id="edMatte">
-            <button data-m="alpha" title="L'effet apparaît DANS le texte">Alpha</button><button data-m="alphaInv" title="L'effet apparaît AUTOUR du texte">Alpha inv.</button><button data-m="luma" title="Cache selon la luminosité du texte">Luma</button><button data-m="lumaInv" title="Cache luma inversé">Luma inv.</button>
-          </div>
-        </div>
-        <div class="th-row"><label>Largeur</label><input type="range" id="edWidth" min="30" max="100" step="5" value="80"><span class="val" id="edWidthV">80 %</span></div>
         <div class="row">
           <button class="btn primary grow" id="edSave">Créer et appliquer</button>
           <button class="btn" id="edCancel">Annuler</button>
