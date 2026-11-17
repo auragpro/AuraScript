@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>AuraScript</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span>AuraScript</span> <span id="version" class="muted">v3.0.0</span></div>
+    <div id="update" class="muted"></div>
+  </header>
+
+  <div id="banner" class="banner hidden">
+    <div class="banner-title">Nouveautés</div>
+    <ul id="bannerList"></ul>
+    <button id="bannerOk" class="btn small">OK</button>
+  </div>
+
+  <nav class="tabs">
+    <button class="tab active" data-page="tools">OUTILS</button>
+    <button class="tab" data-page="intro">INTRO</button>
+    <button class="tab" data-page="curve">COURBE</button>
+  </nav>
+
+  <div id="status" class="status"></div>
+
+  <main id="scroller" class="scroller">
+    <!-- ================= OUTILS ================= -->
+    <section id="page-tools" class="page">
+      <div class="row tools-top">
+        <div class="align-grid" id="alignGrid"></div>
+        <div class="col grow">
+          <button class="btn" data-span="null">Null</button>
+          <button class="btn" data-span="text">Text</button>
+          <button class="btn" data-span="adjust">Adjustment layer</button>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn grow" id="btnPrecomp">Precomp</button>
+        <button class="btn grow" id="btnUncomp">Déprecomp</button>
+      </div>
+      <button class="btn full" id="btnAnchor">Centrer le point d'ancrage</button>
+    </section>
+
+    <!-- ================= INTRO ================= -->
+    <section id="page-intro" class="page hidden">
+      <div class="section-title">LYRICS</div>
+      <div class="muted small-text">Un mot = un texte, calé sur un marqueur</div>
+      <button class="btn full" id="btnDetect">Détecter les paroles de la musique</button>
+      <textarea id="lyrics" rows="6" placeholder="Colle tes paroles ici (l'IA s'en sert pour caler chaque mot)"></textarea>
+      <div class="row center">
+        <label class="muted" for="size">Taille</label>
+        <input id="size" type="number" value="150" min="1">
+        <select id="preset" class="grow"></select>
+        <button class="btn square" id="btnPresetAdd" title="Ajouter un ou plusieurs presets .ffx">+</button>
+        <button class="btn square" id="btnPresetDel" title="Retirer le preset choisi de la liste">–</button>
+      </div>
+      <div class="row">
+        <button class="btn primary grow" id="btnLyrics">Créer les paroles</button>
+        <button class="btn" id="btnPresetApply" title="Applique le preset choisi aux textes sélectionnés">Appliquer</button>
+      </div>
+      <div class="row">
+        <button class="btn grow" id="btnUpper">Majuscule</button>
+        <button class="btn grow" id="btnLower">Minuscule</button>
+      </div>
+    </section>
+
+    <!-- ================= COURBE ================= -->
+    <section id="page-curve" class="page hidden">
+      <div class="row center">
+        <span class="muted grow" id="libCount"></span>
+        <span class="muted">Clés</span>
+        <button class="btn toggle square" id="keys2">2</button>
+        <button class="btn toggle square" id="keys3">3</button>
+      </div>
+      <div class="row lib-row">
+        <div class="thumbs grow" id="thumbs"></div>
+        <button class="btn read" id="btnRead" title="Lit la courbe des keyframes sélectionnées (posée avec Flow ou AuraScript)">Lire clés</button>
+      </div>
+      <div class="row">
+        <button class="btn grow" id="btnNew">Nouvelle</button>
+        <button class="btn grow" id="btnDelete">Supprimer</button>
+        <button class="btn grow" id="btnImport">Import flow curves</button>
+      </div>
+      <canvas id="editor" class="editor"></canvas>
+      <div class="row">
+        <button class="btn primary grow" id="btnApplyCurve">Appliquer</button>
+        <button class="btn small" id="btnReset">Reset</button>
+        <button class="btn small" id="btnSave">Enregistrer</button>
+      </div>
+      <div class="row center">
+        <span class="muted">1</span><input id="seg1" class="grow" type="text">
+        <span class="muted">2</span><input id="seg2" class="grow" type="text">
+      </div>
+    </section>
+  </main>
+
+  <!-- fenêtre de saisie / confirmation -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <div id="modalText" class="modal-text"></div>
+      <input id="modalInput" type="text" class="hidden">
+      <div class="row end">
+        <button class="btn" id="modalCancel">Annuler</button>
+        <button class="btn primary" id="modalOk">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/lyrics-core.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
