@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.1.3
+// version: 3.1.5
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1330,14 +1330,14 @@
         return app.project.items.addFolder(name);
     }
 
-    API.importImage = function (pathJson) {
+    API.importImage = function (pathJson, atZero) {
         try {
             var comp = needComp();
             var f = new File(String(arg(pathJson)));
             if (!f.exists) return fail("Fichier image introuvable.");
             var sel = comp.selectedLayers, top = null, i;
             for (i = 0; i < sel.length; i++) if (!top || sel[i].index < top.index) top = sel[i];
-            var t = comp.time;
+            var t = atZero ? 0 : comp.time;
             return undoable("Coller l'image", function () {
                 var io = new ImportOptions(f);
                 var item = app.project.importFile(io);
