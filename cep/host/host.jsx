@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.0.9
+// version: 3.1.1
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1359,6 +1359,86 @@
                 deselectAll(comp);
                 L.selected = true;
                 return ok((isVideo ? "Vid\u00e9o coll\u00e9e : " : "Image coll\u00e9e : ") + item.name + " (" + w + "\u00d7" + h + ").");
+            });
+        } catch (e) { return fail("Erreur : " + e.message); }
+    };
+
+    // ---------- Onglet PRESETS ----------
+    function lastKeyTime(group) {
+        var m = -1;
+        for (var i = 1; i <= group.numProperties; i++) {
+            var p = null;
+            try { p = group.property(i); } catch (e) { p = null; }
+            if (!p) continue;
+            try {
+                if (p.propertyType === PropertyType.PROPERTY) {
+                    if (p.numKeys > 0) { var k = p.keyTime(p.numKeys); if (k > m) m = k; }
+                } else {
+                    var c = lastKeyTime(p); if (c > m) m = c;
+                }
+            } catch (e2) {}
+        }
+        return m;
+    }
+
+    API.fxPickFiles = function () {
+        var filter = isWindows() ? "Presets After Effects:*.ffx" : function (f) { return (f instanceof Folder) || /\.ffx$/i.test(f.name); };
+        var files = File.openDialog("Choisis un ou plusieurs presets .ffx", filter, true);
+        if (!files) return ok("", []);
+        if (!(files instanceof Array)) files = [files];
+        var out = [];
+        for (var i = 0; i < files.length; i++) if (/\.ffx$/i.test(files[i].name)) out.push(files[i].fsName);
+        return ok("", out);
+    };
+
+    API.fxPickFolder = function () {
+        var f = Folder.selectDialog("Choisis le dossier qui contient tes presets .ffx");
+        return ok("", f ? f.fsName : "");
+    };
+
+    // calque(s) selectionne(s) : preset applique dessus ; rien de selectionne : nouveau calque d'effet
+    // a la taille de la compo, qui commence a la tete de lecture et dure le temps de l'animation du preset
+    API.fxApply = function (pathJson) {
+        try {
+            var comp = needComp();
+            var f = new File(String(arg(pathJson)));
+            if (!f.exists) return fail("Fichier de preset introuvable :\n" + f.fsName);
+            var name = decodeURI(f.name).replace(/\.ffx$/i, "");
+            var sel = comp.selectedLayers, targets = [], i;
+            for (i = 0; i < sel.length; i++) targets.push(sel[i]);
+            var t = comp.time;
+            return undoable("Preset : " + name, function () {
+                if (targets.length) {
+                    for (i = 0; i < targets.length; i++) {
+                        deselectAll(comp);
+                        targets[i].selected = true;
+                        comp.time = t;
+                        targets[i].applyPreset(f);
+                    }
+                    deselectAll(comp);
+                    for (i = 0; i < targets.length; i++) targets[i].selected = true;
+                    comp.time = t;
+                    return ok("\u00ab " + name + " \u00bb appliqu\u00e9 sur " + targets.length + " calque(s).");
+                }
+                deselectAll(comp);
+                var lay = newLayerByCommand(comp, ["Adjustment Layer", "Calque d'effets", "Calque d\u2019effets"], 2279, isAdjustment);
+                if (!lay) {
+                    lay = comp.layers.addSolid([1, 1, 1], name, comp.width, comp.height, comp.pixelAspect, comp.duration);
+                    lay.adjustmentLayer = true;
+                }
+                lay.startTime = 0; lay.inPoint = 0; lay.outPoint = comp.duration;
+                try { lay.name = name; } catch (e1) {}
+                deselectAll(comp);
+                lay.selected = true;
+                comp.time = t;
+                lay.applyPreset(f);
+                var fd = comp.frameDuration, end = lastKeyTime(lay);
+                lay.inPoint = t;
+                lay.outPoint = (end > t + fd / 2) ? Math.min(comp.duration, end + fd) : comp.duration;
+                comp.time = t;
+                deselectAll(comp);
+                lay.selected = true;
+                return ok("\u00ab " + name + " \u00bb mis sur un nouveau calque d'effet.");
             });
         } catch (e) { return fail("Erreur : " + e.message); }
     };
