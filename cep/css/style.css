@@ -342,3 +342,22 @@ body.compact .card { gap: 4px; padding: 2px 7px 8px; }
 .status { transition: opacity .25s; }
 .status.fade { opacity: 0; }
 .align-grid .btn { font-size: 15px; }
+
+/* ---------- barre de recherche des presets ---------- */
+.search { position: relative; flex: 1; display: flex; align-items: center; }
+.search-ic { position: absolute; left: 9px; color: rgba(var(--acc-rgb), .9); pointer-events: none; filter: drop-shadow(0 0 3px var(--glow-soft)); }
+.search input {
+  width: 100%; height: calc(var(--h) + 4px); padding: 0 64px 0 30px;
+  background: #0c0b0f; color: var(--text); font-size: calc(var(--fs) + .5px);
+  border: 1px solid rgba(var(--acc-rgb), .28); border-radius: calc(var(--rad) + 2px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 0 10px rgba(var(--acc-rgb), calc(.08 * var(--gk)));
+  outline: none; user-select: text; transition: border-color .12s, box-shadow .12s;
+}
+.search input:focus { border-color: rgba(var(--acc-rgb), .75); box-shadow: 0 0 0 1px rgba(var(--acc-rgb), .2), 0 0 14px var(--glow-soft); }
+.search input::placeholder { color: #77738c; }
+.search-count { position: absolute; right: 28px; color: #8f8ba6; font-size: calc(var(--fs) - 1px); pointer-events: none; }
+.search-clear { position: absolute; right: 5px; width: 20px; height: 20px; border: 0; border-radius: 50%; background: rgba(255,255,255,.06); color: #cfcde0; cursor: pointer; font-size: 13px; line-height: 20px; padding: 0; }
+.search-clear:hover { background: rgba(var(--acc-rgb), .35); color: #fff; }
+.fx-item mark { background: rgba(var(--acc-rgb), .35); color: #fff; border-radius: 2px; padding: 0 1px; }
+.fx-item { justify-content: flex-start; }
+.fx-item .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
