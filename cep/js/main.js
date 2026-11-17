@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.0.2";
+    var VERSION = "3.0.3";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -671,6 +671,8 @@
     // =====================================================================
 
     var REMOTE = "https://raw.githubusercontent.com/auragpro/AuraScript/main/cep/";
+    var API = "https://api.github.com/repos/auragpro/AuraScript/contents/cep/";
+    var pending = null;
 
     function versionNewer(a, b) {
         var x = String(a).split("."), y = String(b).split(".");
@@ -678,29 +680,58 @@
         return false;
     }
 
-    function checkUpdate() {
-        if (!fs) { $("update").textContent = ""; return; }
-        fetch(REMOTE + "version.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (info) {
-            if (!info || !versionNewer(info.version, VERSION)) { $("update").textContent = "À jour"; return; }
-            $("update").textContent = "Mise à jour " + info.version + "...";
-            var base = extensionPath();
-            return Promise.all(info.files.map(function (f) {
-                return fetch(REMOTE + f + "?t=" + Date.now(), { cache: "no-store" }).then(function (r) {
-                    if (!r.ok) throw new Error(f);
-                    return r.text().then(function (t) { return { f: f, t: t }; });
+    // lit un fichier en ligne : d'abord l'API GitHub (jamais en retard), sinon le lien direct
+    function getRemote(f) {
+        var t = "t=" + Date.now();
+        return fetch(API + f + "?ref=main&" + t, { cache: "no-store", headers: { Accept: "application/vnd.github.raw" } })
+            .then(function (r) { if (!r.ok) throw new Error("api " + r.status); return r.text(); })
+            .catch(function () {
+                return fetch(REMOTE + f + "?" + t, { cache: "no-store" }).then(function (r) {
+                    if (!r.ok) throw new Error(f + " (" + r.status + ")");
+                    return r.text();
                 });
-            })).then(function (all) {
-                all.forEach(function (x) {
-                    var dest = path.join(base, x.f);
-                    fs.mkdirSync(path.dirname(dest), { recursive: true });
-                    fs.writeFileSync(dest + ".new", x.t, "utf8");
-                });
-                all.forEach(function (x) { var dest = path.join(base, x.f); fs.renameSync(dest + ".new", dest); });
-                try { localStorage.setItem("aura.notes", JSON.stringify(info.notes || [])); } catch (e) {}
-                return loadHost().then(function () { location.reload(); });
             });
-        }).catch(function () { $("update").textContent = ""; });
     }
+
+    function checkUpdate() {
+        $("update").textContent = "Vérification...";
+        $("btnUpdate").classList.add("hidden");
+        getRemote("version.json").then(function (txt) {
+            var info = JSON.parse(txt);
+            if (!versionNewer(info.version, VERSION)) { $("update").textContent = "À jour"; return; }
+            pending = info;
+            $("update").textContent = "v" + info.version + " dispo";
+            $("btnUpdate").classList.remove("hidden");
+        }).catch(function (e) {
+            $("update").textContent = "";
+            status("Impossible de vérifier les mises à jour : " + (e && e.message ? e.message : e));
+        });
+    }
+
+    function applyUpdate() {
+        if (!pending) return;
+        if (!fs) { modal("La mise à jour automatique a besoin de Node.js, qui n'est pas disponible dans ce panneau.", { cancel: false }); return; }
+        var info = pending, base = extensionPath(), btn = $("btnUpdate");
+        btn.disabled = true; btn.textContent = "Mise à jour...";
+        Promise.all(info.files.map(function (f) {
+            return getRemote(f).then(function (t) { return { f: f, t: t }; });
+        })).then(function (all) {
+            all.forEach(function (x) {
+                var dest = path.join(base, x.f);
+                fs.mkdirSync(path.dirname(dest), { recursive: true });
+                fs.writeFileSync(dest + ".new", x.t, "utf8");
+            });
+            all.forEach(function (x) { var dest = path.join(base, x.f); fs.renameSync(dest + ".new", dest); });
+            try { localStorage.setItem("aura.notes", JSON.stringify(info.notes || [])); } catch (e) {}
+            return loadHost().then(function () { location.reload(); });
+        }).catch(function (e) {
+            btn.disabled = false; btn.textContent = "Mettre à jour";
+            modal("La mise à jour a échoué :\n" + (e && e.message ? e.message : e) + "\n\nVérifie ta connexion internet puis réessaie.", { cancel: false });
+        });
+    }
+    $("btnUpdate").onclick = applyUpdate;
+    $("update").onclick = checkUpdate;
+    $("update").title = "Cliquer pour vérifier les mises à jour";
 
     function showNotes() {
         var notes = null;
@@ -725,5 +756,5 @@
     try { startPage = localStorage.getItem("aura.page") || "tools"; } catch (e) {}
     showPage(startPage);
     showNotes();
-    setTimeout(checkUpdate, 1500);
+    setTimeout(checkUpdate, 800);
 })();
