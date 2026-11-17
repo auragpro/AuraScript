@@ -1,5 +1,5 @@
 {
-  "version": "3.1.3",
+  "version": "3.1.4",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,6 +9,6 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "OUTILS : boutons « Accélérer x2 » et « Ralentir x2 » sur les calques sélectionnés"
+    "« Extraire l'audio » : le son est séparé directement dans la timeline, plus aucun fichier n'est créé sur le PC"
   ]
 }
