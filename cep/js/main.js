@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.1.0";
+    var VERSION = "3.1.1";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -94,7 +94,7 @@
     var tabs = document.querySelectorAll(".tab");
     function showPage(p) {
         for (var i = 0; i < tabs.length; i++) tabs[i].classList.toggle("active", tabs[i].getAttribute("data-page") === p);
-        ["tools", "intro", "curve"].forEach(function (name) { $("page-" + name).classList.toggle("hidden", name !== p); });
+        ["tools", "intro", "curve", "presets"].forEach(function (name) { $("page-" + name).classList.toggle("hidden", name !== p); });
         $("scroller").scrollTop = 0;
         try { localStorage.setItem("aura.page", p); } catch (e) {}
         if (p === "curve") requestAnimationFrame(function () { drawEditor(); drawThumbs(); });
@@ -313,6 +313,130 @@
     $("btnPasteImg").onclick = function () { PasteImage.run(); };
     $("btnTikTok").onclick = function () { PasteImage.tiktok(); };
     $("ttUrl").addEventListener("keydown", function (e) { if (e.key === "Enter") PasteImage.tiktok(); });
+
+    // ---------- onglet PRESETS ----------
+    var Fx = (function () {
+        var lib = { items: [], folders: [] }, closed = {};
+        function file() { return path.join(process.env.APPDATA || os.homedir(), "AuraScript", "fx-presets.json"); }
+        function load() {
+            try { var d = JSON.parse(fs.readFileSync(file(), "utf8")); lib.items = d.items || []; lib.folders = d.folders || []; } catch (e) { lib = { items: [], folders: [] }; }
+            try { closed = JSON.parse(localStorage.getItem("aura.fxClosed") || "{}"); } catch (e) { closed = {}; }
+        }
+        function save() {
+            try { fs.mkdirSync(path.dirname(file()), { recursive: true }); fs.writeFileSync(file(), JSON.stringify(lib, null, 1), "utf8"); } catch (e) { status("Impossible d'enregistrer la liste des presets : " + e.message); }
+        }
+        function nameOf(p) { return path.basename(p).replace(/\.ffx$/i, ""); }
+        function scan(dir, depth, out) {
+            var items; try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return out; }
+            items.forEach(function (it) {
+                var full = path.join(dir, it.name);
+                if (it.isDirectory() && depth < 6) scan(full, depth + 1, out);
+                else if (it.isFile() && /\.ffx$/i.test(it.name)) out.push(full);
+            });
+            return out;
+        }
+        // un dossier ajouté : chaque sous-dossier devient une catégorie
+        function addFolder(dir, quiet) {
+            var found = scan(dir, 0, []), added = 0, base = path.basename(dir);
+            found.forEach(function (f) {
+                if (lib.items.some(function (x) { return x.path.toLowerCase() === f.toLowerCase(); })) return;
+                var rel = path.relative(dir, path.dirname(f));
+                var cat = rel ? rel.split(/[\\\/]/)[0] : base;
+                lib.items.push({ name: nameOf(f), path: f, cat: cat });
+                added++;
+            });
+            if (lib.folders.indexOf(dir) < 0) lib.folders.push(dir);
+            if (!quiet) status(added + " preset(s) ajouté(s) depuis « " + base + " ».");
+            return added;
+        }
+        function render() {
+            var box = $("fxList"), q = $("fxSearch").value.trim().toLowerCase();
+            box.innerHTML = "";
+            if (!lib.items.length) {
+                box.innerHTML = '<div class="fx-empty">Aucun preset pour l\'instant.<br>Clique sur « + Dossier » pour ajouter un dossier de presets .ffx (chaque sous-dossier devient une catégorie), ou sur « + Presets » pour choisir des fichiers.</div>';
+                return;
+            }
+            var cats = {}, order = [];
+            lib.items.forEach(function (it, i) {
+                if (q && it.name.toLowerCase().indexOf(q) < 0 && String(it.cat).toLowerCase().indexOf(q) < 0) return;
+                var c = it.cat || "Mes presets";
+                if (!cats[c]) { cats[c] = []; order.push(c); }
+                cats[c].push(i);
+            });
+            order.sort(function (a, b) { return a.localeCompare(b); });
+            if (!order.length) { box.innerHTML = '<div class="fx-empty">Aucun preset ne correspond.</div>'; return; }
+            order.forEach(function (c) {
+                var isClosed = !q && closed[c];
+                var head = document.createElement("div"); head.className = "fx-cat-head";
+                head.innerHTML = '<span class="arrow"></span><span class="t"></span><span class="count"></span><span class="del" title="Retirer cette catégorie de la liste">×</span>';
+                head.querySelector(".arrow").textContent = isClosed ? "▸" : "▾";
+                head.querySelector(".t").textContent = c;
+                head.querySelector(".count").textContent = cats[c].length;
+                var grid = document.createElement("div"); grid.className = "fx-grid" + (isClosed ? " closed" : "");
+                head.addEventListener("click", function (e) {
+                    if (e.target.classList.contains("del")) {
+                        modal("Retirer la catégorie « " + c + " » de la liste ?\n(les fichiers .ffx ne sont pas supprimés)").then(function (yes) {
+                            if (!yes) return;
+                            lib.items = lib.items.filter(function (x) { return (x.cat || "Mes presets") !== c; });
+                            save(); render();
+                        });
+                        return;
+                    }
+                    closed[c] = !closed[c];
+                    try { localStorage.setItem("aura.fxClosed", JSON.stringify(closed)); } catch (x) {}
+                    render();
+                });
+                cats[c].sort(function (a, b) { return lib.items[a].name.localeCompare(lib.items[b].name); }).forEach(function (i) {
+                    var it = lib.items[i];
+                    var b = document.createElement("button"); b.className = "btn fx-item"; b.title = it.name + "\n" + it.path;
+                    b.textContent = it.name;
+                    var x = document.createElement("span"); x.className = "x"; x.textContent = "×"; x.title = "Retirer de la liste";
+                    b.appendChild(x);
+                    b.addEventListener("click", function (e) {
+                        if (e.target === x) {
+                            e.stopPropagation();
+                            lib.items = lib.items.filter(function (y) { return y.path !== it.path; });
+                            save(); render(); status("« " + it.name + " » retiré de la liste.");
+                            return;
+                        }
+                        status("Application de « " + it.name + " »...");
+                        host("fxApply", J(it.path)).then(function (r) { showResult(r); });
+                    });
+                    grid.appendChild(b);
+                });
+                box.appendChild(head); box.appendChild(grid);
+            });
+        }
+        function init() {
+            if (!fs) { $("fxList").innerHTML = '<div class="fx-empty">Cet onglet a besoin de Node.js.</div>'; return; }
+            load(); render();
+            $("fxSearch").addEventListener("input", render);
+            $("btnFxFiles").onclick = function () {
+                host("fxPickFiles").then(function (r) {
+                    var files = (r && r.ok && r.data) || [], added = 0;
+                    files.forEach(function (f) {
+                        if (lib.items.some(function (x) { return x.path.toLowerCase() === f.toLowerCase(); })) return;
+                        lib.items.push({ name: nameOf(f), path: f, cat: "Mes presets" }); added++;
+                    });
+                    if (files.length) { save(); render(); status(added + " preset(s) ajouté(s)."); }
+                });
+            };
+            $("btnFxFolder").onclick = function () {
+                host("fxPickFolder").then(function (r) {
+                    if (!r || !r.ok || !r.data) return;
+                    addFolder(r.data); save(); render();
+                });
+            };
+            $("btnFxRefresh").onclick = function () {
+                var n = 0;
+                lib.items = lib.items.filter(function (x) { return fs.existsSync(x.path); });
+                lib.folders.forEach(function (d) { if (fs.existsSync(d)) n += addFolder(d, true); });
+                save(); render(); status("Liste mise à jour (" + n + " nouveau(x) preset(s)).");
+            };
+        }
+        return { init: init };
+    })();
+    Fx.init();
 
     // ---------- sélecteur de couleur (thème sombre) ----------
     var Picker = (function () {
