@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.1.3";
+    var VERSION = "3.1.4";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -308,28 +308,8 @@
                 if (m) modal(m, { cancel: false });
             }).then(function () { ttBusy = false; box.disabled = false; btn.disabled = false; });
         }
-        // extraire l'audio de la vidéo sélectionnée (fichier .wav via ffmpeg, sinon copie audio du calque)
-        function extractAudio() {
-            var ff = (fs && cp) ? ffmpegPath() : null;
-            if (!ff) { host("splitAudio").then(function (r) { showResult(r); }); return; }
-            host("videoLayers").then(function (r) {
-                if (!r.ok) { showResult(r); return; }
-                var dir = path.join(process.env.APPDATA || os.homedir(), "AuraScript", "audio");
-                fs.mkdirSync(dir, { recursive: true });
-                var list = r.data.sort(function (a, b) { return b.index - a.index; }), i = 0, done = 0;
-                function next() {
-                    if (i >= list.length) { if (!done) status(""); return; }
-                    var v = list[i++];
-                    var out = path.join(dir, path.basename(v.path).replace(/\.[^.]+$/, "") + "_audio_" + stamp() + ".wav");
-                    status("Extraction de l'audio" + (list.length > 1 ? " (" + i + "/" + list.length + ")" : "") + "...");
-                    spawnText(ff, ["-hide_banner", "-loglevel", "error", "-y", "-i", v.path, "-vn", "-acodec", "pcm_s16le", "-ar", "48000", out]).then(function (x) {
-                        if (x.code !== 0 || !fs.existsSync(out)) { modal("Impossible d'extraire l'audio de « " + v.name + " ».\n" + String(x.err || "").slice(-300), { cancel: false }); return next(); }
-                        return host("placeAudio", v.compId, v.index, J(out)).then(function (r2) { showResult(r2); if (r2.ok) done++; next(); });
-                    });
-                }
-                next();
-            });
-        }
+        // extraire l'audio : copie du calque en audio seul, directement dans la timeline (aucun fichier créé)
+        function extractAudio() { host("splitAudio").then(function (r) { showResult(r); }); }
         return { run: run, tiktok: tiktok, extractAudio: extractAudio };
     })();
     $("btnPasteImg").onclick = function () { PasteImage.run(); };
