@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.4.0";
+    var VERSION = "3.4.1";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -110,7 +110,7 @@
             { id: "gold", name: "Or", acc: [255, 202, 96], acc2: "#fff1b8", tint: "#33270f" },
             { id: "ice", name: "Glace", acc: [228, 232, 245], acc2: "#ffffff", tint: "#24252e" }
         ];
-        var DEF = { id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45, btn: "dark", btnHex: "#3a2a6a", btnA: 100, anim: true, animDir: "both", animSpd: 3 };
+        var DEF = { id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45, btn: "dark", btnHex: "#3a2a6a", btnA: 100, anim: true, animDir: "lr", animSpd: 3, light: "edge", li: 45 };
         var BTN_SW = ["#2a2a33", "#3a2a6a", "#1f3a66", "#165a5a", "#1f5a33", "#6a3a14", "#6a1f2e", "#55204f"];
         var BG_SW = ["#000000", "#0d0d10", "#101826", "#0f1f2e", "#1a1030", "#2a1240", "#0f2418", "#2a0f14"];
         var st = {};
@@ -138,7 +138,12 @@
             var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
             var on = !!st.anim && !reduce;
             document.body.classList.toggle("anim-on", on);
-            ["lr", "diag", "both"].forEach(function (d) { document.body.classList.toggle("anim-" + d, on && st.animDir === d); });
+            var dir = st.animDir === "diag" ? "diag" : "lr";
+            ["lr", "diag", "both"].forEach(function (d) { document.body.classList.toggle("anim-" + d, on && dir === d); });
+            document.body.classList.toggle("edge", on && st.light !== "beam");
+            document.body.classList.toggle("beam", on && st.light !== "edge");
+            r.setProperty("--li", String(Math.max(0, Math.min(1, st.li / 100))));
+            placeLights();
             r.setProperty("--spd", String([0, 0.5, 0.75, 1, 1.4, 2][st.animSpd] || 1));
             applyBg();
             applyBtn(t);
@@ -172,6 +177,23 @@
                 b.backgroundSize = "cover"; b.backgroundPosition = "center"; b.backgroundRepeat = "no-repeat";
             }
         }
+        // position de chaque bouton dans le panneau : sert à décaler le passage de la lumière
+        var plT = 0;
+        function placeLights() {
+            clearTimeout(plT);
+            plT = setTimeout(function () {
+                var W = window.innerWidth || 1, H = window.innerHeight || 1;
+                Array.prototype.forEach.call(document.querySelectorAll(".btn, .tab, .card"), function (el) {
+                    var rc = el.getBoundingClientRect();
+                    if (!rc.width) return;
+                    var x = Math.max(0, Math.min(1, (rc.left + rc.width / 2) / W)), y = Math.max(0, Math.min(1, (rc.top + rc.height / 2) / H));
+                    el.style.setProperty("--lx", x.toFixed(3));
+                    el.style.setProperty("--ld", ((x + y) / 2).toFixed(3));
+                });
+            }, 60);
+        }
+        window.addEventListener("resize", placeLights);
+        document.addEventListener("click", function (e) { if (e.target.closest && e.target.closest(".tab, .fx-cat-head")) placeLights(); });
         function sync() {
             Array.prototype.forEach.call(document.querySelectorAll(".th-sw"), function (b) { b.classList.toggle("on", !st.hex && b.getAttribute("data-id") === st.id); });
             $("thHex").value = st.hex || "";
@@ -188,7 +210,9 @@
             if (document.activeElement !== $("thBg2")) $("thBg2").value = st.bg2 || "";
             $("thBgDim").value = st.bgDim; $("thBgDimV").textContent = st.bgDim + "%";
             $("thAnim").checked = !!st.anim;
-            Array.prototype.forEach.call(document.querySelectorAll("#thAnimDir button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === st.animDir); });
+            Array.prototype.forEach.call(document.querySelectorAll("#thAnimDir button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === (st.animDir === "diag" ? "diag" : "lr")); });
+            Array.prototype.forEach.call(document.querySelectorAll("#thLight button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === st.light); });
+            $("thLi").value = st.li; $("thLiV").textContent = st.li + "%";
             $("thAnimSpd").value = st.animSpd; $("thAnimSpdV").textContent = ["", "Lent", "Doux", "Normal", "Vif", "Rapide"][st.animSpd] || "";
             Array.prototype.forEach.call(document.querySelectorAll("#thBtnMode button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === st.btn); });
             $("thBtnCustom").classList.toggle("hidden", st.btn !== "custom");
@@ -234,6 +258,10 @@
                 b.onclick = function () { st.anim = true; set("animDir", b.getAttribute("data-m")); };
             });
             $("thAnimSpd").addEventListener("input", function () { set("animSpd", Number(this.value)); });
+            Array.prototype.forEach.call(document.querySelectorAll("#thLight button"), function (b) {
+                b.onclick = function () { st.anim = true; set("light", b.getAttribute("data-m")); };
+            });
+            $("thLi").addEventListener("input", function () { set("li", Number(this.value)); });
             BTN_SW.forEach(function (c) {
                 var b = document.createElement("button"); b.style.background = c; b.title = c;
                 b.onclick = function () { st.btnHex = c; set("btn", "custom"); };
