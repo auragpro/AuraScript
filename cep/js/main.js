@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.4.3";
+    var VERSION = "3.4.4";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -322,6 +322,8 @@
     $("btnPrecomp").onclick = function () { host("precomp").then(function (r) { showResult(r, true); }); };
     $("btnUncomp").onclick = function () { host("uncomp").then(function (r) { showResult(r, true); }); };
     $("btnAnchor").onclick = function () { host("anchor").then(function (r) { showResult(r); }); };
+    $("btnFit").onclick = function () { host("fitLayers", J("fit")).then(function (r) { showResult(r); }); };
+    $("btnFill").onclick = function () { host("fitLayers", J("fill")).then(function (r) { showResult(r); }); };
     $("btnReverse").onclick = function () { host("reverse").then(function (r) { showResult(r); }); };
     $("btnDuplicate").onclick = function () { host("duplicate").then(function (r) { showResult(r); }); };
     $("btnSolid").onclick = function () { Picker.close(); host("solid", J(Picker.value())).then(function (r) { showResult(r); }); };
