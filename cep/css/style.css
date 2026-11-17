@@ -91,3 +91,7 @@ textarea:focus, input:focus, select:focus { border-color: #6a6a6a; }
 .modal-box { width: 86%; max-width: 360px; background: #1a1a1a; border: 1px solid #3a3a3a; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .modal-text { white-space: pre-wrap; color: #ddd; }
 .modal-box input { width: 100%; }
+
+.upd { display: flex; align-items: center; gap: 6px; }
+#btnUpdate { background: #f2f2f2; color: #111; border-color: #f2f2f2; font-weight: 600; }
+#btnUpdate:disabled { opacity: .6; }
