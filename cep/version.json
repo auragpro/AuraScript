@@ -1,5 +1,5 @@
 {
-  "version": "3.3.1",
+  "version": "3.4.0",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,6 +9,9 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "PRESETS : nouvelle barre de recherche — tape le nom, les lettres trouvées s'allument, Entrée applique le 1er résultat, Échap efface"
+    "Lumière animée : un faisceau traverse le panneau (horizontal, en diagonale ou les deux)",
+    "Les halos de couleur du fond bougent doucement",
+    "Reflet qui glisse sur les boutons au survol, onglet actif et boutons principaux qui brillent",
+    "Réglages dans Thème > Animations (on/off, direction, vitesse) — n'utilise que la carte graphique, sans lag"
   ]
 }
