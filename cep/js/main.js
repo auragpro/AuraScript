@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.1.2";
+    var VERSION = "3.1.3";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -335,6 +335,8 @@
     $("btnPasteImg").onclick = function () { PasteImage.run(); };
     $("btnTikTok").onclick = function () { PasteImage.tiktok(); };
     $("btnExtractAudio").onclick = function () { PasteImage.extractAudio(); };
+    $("btnFaster").onclick = function () { host("speed", 2).then(function (r) { showResult(r); }); };
+    $("btnSlower").onclick = function () { host("speed", 0.5).then(function (r) { showResult(r); }); };
     $("ttUrl").addEventListener("keydown", function (e) { if (e.key === "Enter") PasteImage.tiktok(); });
 
     // ---------- onglet PRESETS ----------
