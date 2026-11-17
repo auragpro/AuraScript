@@ -21,6 +21,7 @@
     <button class="tab active" data-page="tools">OUTILS</button>
     <button class="tab" data-page="intro">INTRO</button>
     <button class="tab" data-page="curve">COURBE</button>
+    <button class="tab" data-page="presets">PRESETS</button>
   </nav>
 
   <div id="status" class="status"></div>
@@ -114,6 +115,20 @@
         <span class="muted">1</span><input id="seg1" class="grow" type="text">
         <span class="muted">2</span><input id="seg2" class="grow" type="text">
       </div>
+    </section>
+
+    <!-- ================= PRESETS ================= -->
+    <section id="page-presets" class="page hidden">
+      <div class="row">
+        <input id="fxSearch" class="tt-url" placeholder="Rechercher un preset..." spellcheck="false">
+      </div>
+      <div class="row">
+        <button class="btn grow" id="btnFxFiles">+ Presets</button>
+        <button class="btn grow" id="btnFxFolder">+ Dossier</button>
+        <button class="btn small" id="btnFxRefresh" title="Relire les dossiers ajoutés (nouveaux presets)">↻</button>
+      </div>
+      <div class="muted fx-help">Calque sélectionné : le preset s'applique dessus. Rien de sélectionné : il est mis sur un calque d'effet à la bonne taille.</div>
+      <div id="fxList" class="fx-list"></div>
     </section>
   </main>
 
