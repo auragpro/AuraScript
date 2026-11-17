@@ -294,3 +294,13 @@ textarea:focus, input:focus, select:focus, .tt-url:focus, .pk-hex:focus {
 .th-row .val { width: 30px; text-align: right; color: #a9a6ba; }
 .th-check { display: flex; align-items: center; gap: 8px; color: #cfcde0; cursor: pointer; }
 .th-check input { accent-color: var(--acc); }
+
+.th-seg { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: var(--rad); overflow: hidden; }
+.th-seg button { height: 24px; border: 0; border-right: 1px solid var(--line); background: #141318; color: #a9a6ba; font-size: calc(var(--fs) - 1px); cursor: pointer; }
+.th-seg button:last-child { border-right: 0; }
+.th-seg button:hover { color: #fff; }
+.th-seg button.on { background: linear-gradient(135deg, #fff, rgba(var(--acc-rgb), 1)); color: #120f1c; font-weight: 700; }
+.th-bgsw { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.th-bgsw button { height: 18px; border-radius: 4px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
+.th-bgsw button:hover { border-color: #ddd; }
+.theme-pop { max-height: calc(100vh - 48px); overflow-y: auto; }
