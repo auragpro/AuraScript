@@ -455,3 +455,28 @@ body.anim-on.edge.anim-diag .btn::before, body.anim-on.edge.anim-diag .tab::befo
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #2b2933; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #3d3a48; }
+
+/* 3.5.0 : EDGE DETECT TEXT */
+.ed-card .section-title { gap: 6px; }
+.ed-hbtn { height: 22px; min-width: 22px; padding: 0 6px; font-size: 14px; line-height: 1; letter-spacing: 0; display: flex; align-items: center; justify-content: center; }
+.ed-plus { font-weight: 700; font-size: 16px; }
+.ed-plus.on { box-shadow: 0 0 10px var(--glow); }
+.ed-form { display: flex; flex-direction: column; gap: 7px; padding: 9px; border-radius: var(--rad); border: 1px solid rgba(var(--acc-rgb), .3); background: rgba(10, 9, 14, .55); }
+.ed-form.hidden { display: none; }
+.ed-form-title { font-weight: 700; color: #ecebf7; font-size: calc(var(--fs) - .5px); letter-spacing: .6px; }
+.ed-field { display: flex; flex-direction: column; gap: 4px; }
+.ed-field > label { color: #a9a6ba; font-size: calc(var(--fs) - 1px); }
+.ed-field input[type=text], .ed-field select { width: 100%; }
+.ed-inline select { min-width: 0; }
+.ed-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ed-chip { height: 20px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--line); background: #141318; color: #cfcde0; font-size: calc(var(--fs) - 1.5px); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-chip:hover { color: #fff; border-color: rgba(var(--acc-rgb), .6); }
+.ed-chip.on { background: linear-gradient(135deg, #fff, rgba(var(--acc-rgb), 1)); color: #120f1c; font-weight: 700; border-color: transparent; }
+.ed-form .th-row label { width: 56px; }
+.ed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 5px; }
+.ed-item { height: auto; min-height: 38px; padding: 5px 8px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; text-align: left; overflow: hidden; }
+.ed-item .nm { font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-item .sub { font-size: calc(var(--fs) - 2px); opacity: .65; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-item.last { border-color: rgba(var(--acc-rgb), .8); box-shadow: 0 0 8px var(--glow-soft); }
+.ed-grid.deleting .ed-item { border-style: dashed; }
+.ed-item.picked { background: #5a2323; border-color: #e05a4a; border-style: solid !important; color: #fff; }
