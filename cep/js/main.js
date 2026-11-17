@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.4.4";
+    var VERSION = "3.4.5";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -418,6 +418,20 @@
                 p.on("close", function (c) { resolve({ code: c, out: out }); });
             });
         }
+        // on garde le lien a cote de la video : l'extraction audio pourra recuperer le son original en haute qualite
+        function saveLink(file, url) { try { fs.writeFileSync(file.replace(/\.[^.]+$/, "") + ".url.txt", String(url), "utf8"); } catch (e) {} }
+        function readLink(file) { try { var u = fs.readFileSync(file.replace(/\.[^.]+$/, "") + ".url.txt", "utf8").trim(); return /^https?:\/\//.test(u) ? u : null; } catch (e) { return null; } }
+        // telecharge la meilleure piste audio disponible pour ce lien (sans la video)
+        function bestAudio(url, base) {
+            if (!fs.existsSync(ytdlp())) return Promise.resolve(null);
+            var dir = path.dirname(base), name = path.basename(base) + "_src";
+            var args = ["--no-playlist", "--newline", "--no-part", "--restrict-filenames",
+                "-f", "ba/b", "-S", "abr,asr", "-o", path.join(dir, name + ".%(ext)s"), url];
+            return runYtdlp(ytdlp(), args).then(function (r) {
+                var f = fs.readdirSync(dir).filter(function (n) { return n.indexOf(name + ".") === 0; })[0];
+                return (r.code === 0 && f) ? path.join(dir, f) : null;
+            }).catch(function () { return null; });
+        }
         function downloadTikTok(url) {
             return ensureYtdlp().then(function (exe) {
                 var dir = path.join(process.env.APPDATA || os.homedir(), "AuraScript", "videos");
@@ -436,12 +450,12 @@
                 status("Téléchargement de la vidéo TikTok...");
                 return runYtdlp(exe, args).then(function (r) {
                     var f = find();
-                    if (r.code === 0 && f) return f;
+                    if (r.code === 0 && f) { saveLink(f, url); return f; }
                     // TikTok change souvent : on met yt-dlp à jour puis on réessaie une fois
                     status("Mise à jour de yt-dlp...");
                     return runYtdlp(exe, ["-U"]).then(function () { return runYtdlp(exe, args); }).then(function (r2) {
                         var f2 = find();
-                        if (r2.code === 0 && f2) return f2;
+                        if (r2.code === 0 && f2) { saveLink(f2, url); return f2; }
                         var why = (r2.out.match(/ERROR:.*$/m) || [""])[0];
                         throw new Error("Impossible de récupérer cette vidéo TikTok." + (why ? "\n\n" + why.slice(0, 300) : "") + "\n\nVérifie que le lien est public et réessaie.");
                     });
@@ -524,8 +538,14 @@
                     var v = list[i++];
                     var base = path.join(dir, path.basename(v.path).replace(/\.[^.]+$/, "").replace(/[^\w\-]+/g, "_").slice(0, 60) + "_" + stamp());
                     status("Extraction du son en MP3" + (list.length > 1 ? " (" + i + "/" + list.length + ")" : "") + "...");
-                    var mp3 = base + ".mp3";
-                    spawnText(ff, ["-hide_banner", "-loglevel", "error", "-y", "-i", v.path, "-vn", "-c:a", "libmp3lame", "-q:a", "2", mp3]).then(function (x) {
+                    var mp3 = base + ".mp3", link = readLink(v.path), srcAudio = null;
+                    // TikTok : on reprend le son original en meilleure qualite (la piste de la video est souvent tres compressee)
+                    (link ? (status("R\u00e9cup\u00e9ration du son original en haute qualit\u00e9..."), bestAudio(link, base)) : Promise.resolve(null)).then(function (src) {
+                        srcAudio = src;
+                        status("Conversion en MP3 haute qualit\u00e9...");
+                        return spawnText(ff, ["-hide_banner", "-loglevel", "error", "-y", "-i", src || v.path, "-vn", "-map", "0:a:0", "-c:a", "libmp3lame", "-b:a", "320k", mp3]);
+                    }).then(function (x) {
+                        if (srcAudio) { try { fs.unlinkSync(srcAudio); } catch (e) {} }
                         if (x.code === 0 && fs.existsSync(mp3)) return mp3;
                         var wav = base + ".wav";   // si le MP3 n'est pas disponible : WAV
                         return spawnText(ff, ["-hide_banner", "-loglevel", "error", "-y", "-i", v.path, "-vn", "-c:a", "pcm_s16le", wav]).then(function (y) {
