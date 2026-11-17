@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.0.8
+// version: 3.0.9
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1320,13 +1320,14 @@
     };
 
     // ---------- Coller une image (fichier prepare par le panneau) ----------
-    function imagesFolder() {
+    function imagesFolder(name) {
+        name = name || "AuraScript Images";
         var root = app.project.rootFolder;
         for (var i = 1; i <= app.project.numItems; i++) {
             var it = app.project.item(i);
-            if (it instanceof FolderItem && it.name === "AuraScript Images" && it.parentFolder === root) return it;
+            if (it instanceof FolderItem && it.name === name && it.parentFolder === root) return it;
         }
-        return app.project.items.addFolder("AuraScript Images");
+        return app.project.items.addFolder(name);
     }
 
     API.importImage = function (pathJson) {
@@ -1340,7 +1341,8 @@
             return undoable("Coller l'image", function () {
                 var io = new ImportOptions(f);
                 var item = app.project.importFile(io);
-                try { item.parentFolder = imagesFolder(); } catch (e1) {}
+                var isVideo = item.duration > 0 && !item.mainSource.isStill;
+                try { item.parentFolder = imagesFolder(isVideo ? "AuraScript Vid\u00e9os" : "AuraScript Images"); } catch (e1) {}
                 var L = comp.layers.add(item);
                 var len = L.outPoint - L.inPoint;
                 if (!(len > 0)) len = comp.duration;
@@ -1356,7 +1358,7 @@
                 L.property("ADBE Transform Group").property("ADBE Position").setValue([comp.width / 2, comp.height / 2]);
                 deselectAll(comp);
                 L.selected = true;
-                return ok("Image coll\u00e9e : " + item.name + " (" + w + "\u00d7" + h + ").");
+                return ok((isVideo ? "Vid\u00e9o coll\u00e9e : " : "Image coll\u00e9e : ") + item.name + " (" + w + "\u00d7" + h + ").");
             });
         } catch (e) { return fail("Erreur : " + e.message); }
     };
