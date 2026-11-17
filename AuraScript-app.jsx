@@ -1,7 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.8.4
-// nouveautes: Détection des paroles bien meilleure : nouveau modèle IA « large-v3-turbo » (téléchargé une seule fois, ~550 Mo)
-// nouveautes: Plus rapide : seule la partie gardée de la musique est analysée (avec un peu de marge autour)
+// version: 1.8.5
+// nouveautes: Paroles : timing des marqueurs environ 2 fois plus précis (deux méthodes de calage combinées)
+// nouveautes: Moins de mots inventés en fin de passage, qui décalaient les autres mots
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -863,7 +863,9 @@
             .replace(/\\n/g, " ").replace(/\\t/g, " ").replace(/\\"/g, "\"").replace(/\\\//g, "/").replace(/\\\\/g, "\\");
     }
 
-    // Début précis du mot : 1er vrai token du segment avec son temps DTW (en centièmes de seconde)
+    // Début du mot : moyenne entre le temps du segment et le temps DTW (alignement sur le son).
+    // Testé sur une vraie musique : le segment tombe souvent trop tôt, le DTW trop tard,
+    // la moyenne divise l'erreur par deux environ.
     function dtwStart(chunk, fallback) {
         var re = /"text"\s*:\s*"((?:[^"\\]|\\.)*)"((?:(?!"text")[\s\S])*?)"t_dtw"\s*:\s*(-?[\d.]+)/g, m;
         while ((m = re.exec(chunk)) !== null) {
@@ -872,8 +874,8 @@
             var t = parseFloat(m[3]);
             if (isNaN(t) || t < 0) return fallback;
             t = t / 100;
-            if (Math.abs(t - fallback) > 1) return fallback; // valeur aberrante : on garde l'estimation normale
-            return t;
+            if (Math.abs(t - fallback) > 1.5) return fallback; // valeur aberrante : on garde l'estimation normale
+            return (t + fallback) / 2;
         }
         return fallback;
     }
@@ -2580,10 +2582,9 @@
             var srcOut = Math.max(srcIn + 0.2, (L.outPoint - L.startTime) / k);
             det.srcIn = srcIn;
             det.srcOut = srcOut;
-            // marge de 5 s autour de la partie gardée : l'IA a du contexte, et on n'analyse pas toute la musique
-            var pad = 5;
-            var a0 = Math.max(0, srcIn - pad);
-            det.job = startWhisperJob(det.audio, det.hint, Math.round(a0 * 1000), Math.round((srcOut + pad - a0) * 1000), det.model);
+            // marge avant (contexte) et petite marge après : au-delà, l'IA invente des mots qui faussent le calage
+            var a0 = Math.max(0, srcIn - 3);
+            det.job = startWhisperJob(det.audio, det.hint, Math.round(a0 * 1000), Math.round((srcOut + 1 - a0) * 1000), det.model);
             status.text = "Analyse de la musique en cours...";
         }
 
