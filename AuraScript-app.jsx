@@ -1,7 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.7.0
-// nouveautes: COURBE : bouton Appliquer juste sous la courbe, avec deux petits boutons Reset et Enregistrer à côté
-// nouveautes: COURBE : catégorie Appliquer, options Normal / Reverse / Aller-retour et « Caler la clé du milieu » retirées
+// version: 1.7.1
+// nouveautes: COURBE : nouveau bouton « Lire clés » à droite des vignettes
+// nouveautes: Il lit la courbe des keyframes sélectionnées (posée avec Flow ou AuraScript) et la met dans l'éditeur
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -1109,6 +1109,101 @@
         }
     }
 
+    // ---------- Lecture d'une courbe depuis les keyframes (compatible Flow) ----------
+
+    // Valeur d'une clé sur la dimension choisie (dim = -1 : distance pour les propriétés spatiales)
+    function keyDim(v, dim) {
+        if (v instanceof Array) return v[dim < 0 ? 0 : dim];
+        return v;
+    }
+
+    // Transition entre k1 et k2 -> cubic-bezier [x1, y1, x2, y2] (l'inverse de applyBezToSegment)
+    function readBezFromSegment(p, k1, k2, dim) {
+        var dt = p.keyTime(k2) - p.keyTime(k1);
+        var LIN = KeyframeInterpolationType.LINEAR;
+        var HOLD = KeyframeInterpolationType.HOLD;
+        if (p.keyOutInterpolationType(k1) === HOLD) return null;
+        if (dt <= 0) return null;
+        var outLinear = p.keyOutInterpolationType(k1) === LIN;
+        var inLinear = p.keyInInterpolationType(k2) === LIN;
+
+        var D;
+        if (dim < 0) D = vecLength(valueDelta(p.keyValue(k1), p.keyValue(k2)));
+        else D = keyDim(p.keyValue(k2), dim) - keyDim(p.keyValue(k1), dim);
+
+        var eo = p.keyOutTemporalEase(k1), ei = p.keyInTemporalEase(k2);
+        var di = (dim < 0) ? 0 : Math.min(dim, eo.length - 1);
+        var x1 = eo[di].influence / 100, x2 = 1 - ei[di].influence / 100;
+        var y1, y2;
+        if (Math.abs(D) < 1e-9) {
+            y1 = 0; y2 = 1;
+        } else {
+            y1 = eo[di].speed * x1 * dt / D;
+            y2 = 1 - ei[di].speed * (1 - x2) * dt / D;
+        }
+        if (outLinear) { x1 = 0.3333; y1 = 0.3333; }
+        if (inLinear) { x2 = 0.6667; y2 = 0.6667; }
+        return [round4(clampNum(x1, 0, 1)), round4(clampNum(y1, -3, 4)), round4(clampNum(x2, 0, 1)), round4(clampNum(y2, -3, 4))];
+    }
+
+    // Lit la courbe sur la 1re propriété qui a au moins 2 keyframes sélectionnées
+    function readCurveFromSelection(comp) {
+        var props = comp.selectedProperties;
+        for (var i = 0; i < props.length; i++) {
+            var p = props[i];
+            if (p.propertyType !== PropertyType.PROPERTY) continue;
+            var sel = p.selectedKeys;
+            if (!sel || sel.length < 2 || !isEasable(p)) continue;
+            var keys = [];
+            for (var j = 0; j < sel.length; j++) keys.push(sel[j]);
+            keys.sort(function (a, b) { return a - b; });
+
+            // dimension utilisée : distance si spatial, sinon celle qui bouge le plus
+            var dim = -1;
+            if (!p.isSpatial) {
+                var v1 = p.keyValue(keys[0]), v2 = p.keyValue(keys[1]);
+                dim = 0;
+                if (v1 instanceof Array) {
+                    var best = -1;
+                    for (var d = 0; d < v1.length; d++) {
+                        var m = Math.abs(v2[d] - v1[d]);
+                        if (m > best) { best = m; dim = d; }
+                    }
+                }
+            }
+
+            var c = defaultCurve();
+            var b1 = readBezFromSegment(p, keys[0], keys[1], dim);
+            if (!b1) return { error: "Les keyframes sélectionnées sont en maintien (hold) : rien à lire." };
+            if (keys.length >= 3) {
+                var b2 = readBezFromSegment(p, keys[1], keys[2], dim);
+                if (b2) {
+                    var t0 = p.keyTime(keys[0]), t2 = p.keyTime(keys[2]);
+                    var a0, a1, a2;
+                    if (dim < 0) {
+                        a0 = 0;
+                        a1 = vecLength(valueDelta(p.keyValue(keys[0]), p.keyValue(keys[1])));
+                        a2 = vecLength(valueDelta(p.keyValue(keys[0]), p.keyValue(keys[2])));
+                    } else {
+                        a0 = keyDim(p.keyValue(keys[0]), dim);
+                        a1 = keyDim(p.keyValue(keys[1]), dim);
+                        a2 = keyDim(p.keyValue(keys[2]), dim);
+                    }
+                    var span = a1 - a0;
+                    c.keys = 3;
+                    c.segs = [b1, b2];
+                    c.mid = [round4(clampNum((p.keyTime(keys[1]) - t0) / (t2 - t0), 0.05, 0.95)), 1];
+                    c.end = (Math.abs(span) < 1e-9) ? 0 : round4(clampNum((a2 - a0) / span, -1, 2));
+                    fixThreeKeyValues(c);
+                    return { curve: c, prop: p.name };
+                }
+            }
+            c.segs = [b1];
+            return { curve: c, prop: p.name };
+        }
+        return { error: "Sélectionne au moins 2 keyframes sur une propriété (dans la timeline)." };
+    }
+
     // Applique la courbe à toutes les keyframes sélectionnées de la composition
     function applyCurveToSelection(comp, curve, mode, placeMid) {
         var props = comp.selectedProperties;
@@ -1436,7 +1531,12 @@
         btnK3.alignment = ["right", "center"];
 
         // Grille de vignettes (des groupes dessinés, cliquables)
-        var gGrid = page.add("group");
+        var gGridRow = page.add("group");
+        gGridRow.orientation = "row";
+        gGridRow.alignChildren = ["left", "top"];
+        gGridRow.alignment = ["left", "top"];
+        gGridRow.spacing = 4;
+        var gGrid = gGridRow.add("group");
         gGrid.orientation = "column";
         gGrid.alignChildren = ["left", "top"];
         gGrid.alignment = ["left", "top"];
@@ -1466,6 +1566,10 @@
                 cellIds.push(null);
             }
         }
+
+        var btnRead = themeButton(gGridRow.add("button", undefined, "Lire clés"));
+        btnRead.preferredSize = [60, THUMB.h * THUMB.rows + 4];
+        btnRead.helpTip = "Lit la courbe des keyframes sélectionnées dans la timeline (posée avec Flow ou AuraScript) et la met dans l'éditeur";
 
         var gLib = page.add("group");
         gLib.orientation = "row";
@@ -1623,6 +1727,17 @@
             st.mode = m;
             refreshAll();
         }
+
+        btnRead.onClick = function () {
+            var comp = getActiveComp();
+            if (!comp) { alert("Ouvre d'abord une composition."); return; }
+            var r = readCurveFromSelection(comp);
+            if (r.error) { alert(r.error); return; }
+            st.curve = r.curve;
+            repaintCells();
+            refreshAll();
+            setStatus("Courbe lue sur « " + r.prop + " » : " + bezToText(r.curve.segs[0]) + (r.curve.keys === 3 ? " (3 clés)" : "") + ". Clique sur Enregistrer pour la garder.");
+        };
 
         btnPrev.onClick = function () { st.page--; refreshQuick(null); };
         btnNext.onClick = function () { st.page++; refreshQuick(null); };
