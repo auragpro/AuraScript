@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.0.5
+// version: 3.0.6
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1240,71 +1240,30 @@
 
     var API = {};
 
-    // ---------- Inverser / Dupliquer / Solide ----------
+    // ---------- Miroir / Dupliquer / Solide ----------
 
-    // inverse dans le temps les cles selectionnees de chaque propriete (au moins 2 cles)
-    function reverseSelectedKeys(comp) {
-        var sel = comp.selectedLayers, props = 0;
-        for (var i = 0; i < sel.length; i++) {
-            var sp = sel[i].selectedProperties;
-            for (var j = 0; j < sp.length; j++) {
-                var p = sp[j];
-                if (p.propertyType !== PropertyType.PROPERTY || !p.numKeys) continue;
-                var ks = p.selectedKeys;
-                if (!ks || ks.length < 2) continue;
-                var keys = [], tmin = 1e9, tmax = -1e9, k, d;
-                for (k = 0; k < ks.length; k++) {
-                    var ix = ks[k];
-                    d = { t: p.keyTime(ix), v: p.keyValue(ix),
-                          ii: p.keyInInterpolationType(ix), oi: p.keyOutInterpolationType(ix),
-                          ie: p.keyInTemporalEase(ix), oe: p.keyOutTemporalEase(ix) };
-                    try { d.ist = p.keyInSpatialTangent(ix); d.ost = p.keyOutSpatialTangent(ix); } catch (e1) {}
-                    keys.push(d);
-                    if (d.t < tmin) tmin = d.t;
-                    if (d.t > tmax) tmax = d.t;
-                }
-                for (k = ks.length - 1; k >= 0; k--) p.removeKey(ks[k]);
-                for (k = 0; k < keys.length; k++) {
-                    d = keys[k];
-                    var n = p.addKey(tmin + tmax - d.t);
-                    p.setValueAtKey(n, d.v);
-                    try { p.setTemporalEaseAtKey(n, d.oe, d.ie); } catch (e2) {}
-                    try { p.setInterpolationTypeAtKey(n, d.oi, d.ii); } catch (e3) {}
-                    if (d.ist !== undefined) { try { p.setSpatialTangentsAtKey(n, d.ost, d.ist); } catch (e4) {} }
-                }
-                for (k = 1; k <= p.numKeys; k++) {
-                    var kt = p.keyTime(k);
-                    if (kt >= tmin - 0.0001 && kt <= tmax + 0.0001) p.setSelectedAtKey(k, true);
-                }
-                props++;
-            }
-        }
-        return props;
-    }
-
-    // inverse l'ordre des calques selectionnes dans la timeline
-    function reverseLayerOrder(comp) {
-        var sel = comp.selectedLayers, arr = [], idx = [], i;
-        for (i = 0; i < sel.length; i++) arr.push(sel[i]);
-        arr.sort(function (a, b) { return a.index - b.index; });
-        for (i = 0; i < arr.length; i++) idx.push(arr[i].index);
-        for (i = 0; i < arr.length; i++) {
-            var L = arr[arr.length - 1 - i];
-            if (L.index === idx[i]) continue;
-            try { L.moveBefore(comp.layer(idx[i])); } catch (e) {}
-        }
+    // mode miroir : retourne horizontalement les calques selectionnes (echelle X inversee)
+    function mirrorLayer(L) {
+        var sc = L.property("ADBE Transform Group").property("ADBE Scale");
+        if (!sc || sc.expressionEnabled) return false;
+        function flip(v) { var o = [-v[0], v[1]]; if (v.length > 2) o.push(v[2]); return o; }
+        if (sc.numKeys > 0) { for (var k = 1; k <= sc.numKeys; k++) sc.setValueAtKey(k, flip(sc.keyValue(k))); }
+        else sc.setValue(flip(sc.value));
+        return true;
     }
 
     API.reverse = function () {
         try {
             var comp = needComp();
-            if (!comp.selectedLayers.length) return fail("S\u00e9lectionne des cl\u00e9s (au moins 2) ou plusieurs calques.");
-            return undoable("Inverser", function () {
-                var n = reverseSelectedKeys(comp);
-                if (n) return ok("Cl\u00e9s invers\u00e9es sur " + n + " propri\u00e9t\u00e9(s).");
-                if (comp.selectedLayers.length < 2) return fail("S\u00e9lectionne au moins 2 cl\u00e9s d'une propri\u00e9t\u00e9, ou au moins 2 calques.");
-                reverseLayerOrder(comp);
-                return ok("Ordre de " + comp.selectedLayers.length + " calque(s) invers\u00e9.");
+            var sel = comp.selectedLayers, src = [], i;
+            for (i = 0; i < sel.length; i++) src.push(sel[i]);
+            if (!src.length) return fail("S\u00e9lectionne d'abord un ou plusieurs calques.");
+            return undoable("Miroir", function () {
+                var n = 0;
+                for (i = 0; i < src.length; i++) { try { if (mirrorLayer(src[i])) n++; } catch (e1) {} }
+                var m = n + " calque(s) en miroir.";
+                if (n < src.length) m += " " + (src.length - n) + " n'a (n'ont) pas pu \u00eatre retourn\u00e9(s).";
+                return ok(m);
             });
         } catch (e) { return fail("Erreur : " + e.message); }
     };
