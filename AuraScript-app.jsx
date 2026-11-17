@@ -1,6 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.9.2
-// nouveautes: INTRO : boutons « Majuscule » et « Minuscule » pour changer la casse des textes sélectionnés
+// version: 1.9.3
+// nouveautes: OUTILS : bouton « Ancre au centre » — met le point d'ancrage au milieu du calque sans le déplacer
+// nouveautes: OUTILS : titre « Alignement » retiré
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -392,6 +393,69 @@
     }
 
     // h : 0 gauche, 1 centre, 2 droite — v : 0 haut, 1 milieu, 2 bas
+    // ---------- Point d'ancrage au centre ----------
+
+    // Décale une propriété (position) de [dx, dy] à toutes ses keyframes, ou sur sa valeur fixe
+    function shiftProp(p, dx, dy, dimIndex) {
+        function add(v) {
+            if (dimIndex === 0) return v + dx;
+            if (dimIndex === 1) return v + dy;
+            var o = [v[0] + dx, v[1] + dy];
+            if (v.length > 2) o.push(v[2]);
+            return o;
+        }
+        if (p.numKeys > 0) {
+            for (var k = 1; k <= p.numKeys; k++) p.setValueAtKey(k, add(p.keyValue(k)));
+        } else {
+            p.setValue(add(p.value));
+        }
+    }
+
+    // Met l'ancre au centre du contenu de chaque calque sélectionné, sans le déplacer à l'écran
+    function centerAnchors(comp) {
+        var sel = comp.selectedLayers, done = 0, skipped = 0;
+        for (var i = 0; i < sel.length; i++) {
+            var L = sel[i];
+            if (L instanceof CameraLayer || L instanceof LightLayer) { skipped++; continue; }
+            var tr = L.property("ADBE Transform Group");
+            var ap = tr.property("ADBE Anchor Point");
+            if (!ap || ap.numKeys > 0 || ap.expressionEnabled) { skipped++; continue; }
+            var t = comp.time;
+            var r;
+            try { r = L.sourceRectAtTime(t, false); } catch (e) { r = null; }
+            if (!r || (r.width === 0 && r.height === 0)) {
+                try { r = { left: 0, top: 0, width: L.width, height: L.height }; } catch (e2) { skipped++; continue; }
+            }
+            var old = ap.value;
+            var nx = r.left + r.width / 2, ny = r.top + r.height / 2;
+            var dax = nx - old[0], day = ny - old[1];
+            if (Math.abs(dax) < 0.001 && Math.abs(day) < 0.001) { done++; continue; }
+
+            // compensation sur la position : décalage d'ancre × échelle, tourné selon la rotation du calque
+            var sc = tr.property("ADBE Scale").valueAtTime(t, false);
+            var rotProp = tr.property("ADBE Rotate Z");
+            var rot = rotProp ? rotProp.valueAtTime(t, false) : 0;
+            var a = rot * Math.PI / 180;
+            var sx = dax * sc[0] / 100, sy = day * sc[1] / 100;
+            var px = sx * Math.cos(a) - sy * Math.sin(a);
+            var py = sx * Math.sin(a) + sy * Math.cos(a);
+
+            var nv = [nx, ny];
+            if (old.length > 2) nv.push(old[2]);
+            ap.setValue(nv);
+
+            var pos = tr.property("ADBE Position");
+            if (pos.dimensionsSeparated) {
+                shiftProp(tr.property("ADBE Position_0"), px, py, 0);
+                shiftProp(tr.property("ADBE Position_1"), px, py, 1);
+            } else {
+                shiftProp(pos, px, py, -1);
+            }
+            done++;
+        }
+        return { done: done, skipped: skipped };
+    }
+
     // ---------- Precomp / Déprecomp ----------
 
     function uniqueCompName(base) {
@@ -2545,7 +2609,11 @@
         pageCurve.visible = false;
 
         // ---------- Alignement ----------
-        var sAli = addSection(pageTools, "ALIGNEMENT");
+        var sAli = pageTools.add("group"); // section sans titre
+        sAli.orientation = "column";
+        sAli.alignChildren = ["fill", "top"];
+        sAli.spacing = 5;
+        sAli.margins = [0, 6, 0, 0];
         var gAli = sAli.add("group");
         gAli.orientation = "row";
         gAli.alignChildren = ["left", "top"];
@@ -2595,6 +2663,11 @@
         var btnUncomp = themeButton(gComp.add("button", undefined, "Déprecomp"));
         btnUncomp.preferredSize = [112, 26];
         btnUncomp.helpTip = "Ressort le contenu du precomp sélectionné dans la composition";
+
+        var btnAnchor = themeButton(sAli.add("button", undefined, "Ancre au centre"));
+        btnAnchor.preferredSize = [228, 26];
+        btnAnchor.alignment = ["left", "top"];
+        btnAnchor.helpTip = "Met le point d'ancrage au milieu des calques sélectionnés, sans les déplacer à l'écran";
 
         // ---------- Lyrics ----------
         var pLyr = addSection(pageIntro, "LYRICS");
@@ -2724,6 +2797,21 @@
         btnAdj.onClick = function () { onSpanClick("adjust"); };
         btnNull.onClick = function () { onSpanClick("null"); };
         btnText.onClick = function () { onSpanClick("text"); };
+
+        btnAnchor.onClick = function () {
+            var comp = getActiveComp();
+            if (!comp) { alert("Ouvre d'abord une composition."); return; }
+            if (!comp.selectedLayers.length) { alert("Sélectionne d'abord un ou plusieurs calques."); return; }
+            app.beginUndoGroup("Ancre au centre");
+            try {
+                var r = centerAnchors(comp);
+                status.text = r.done + " point(s) d'ancrage centré(s)." + (r.skipped ? " " + r.skipped + " calque(s) ignoré(s) (caméra, lumière ou ancre animée)." : "");
+            } catch (e) {
+                alert("Erreur : " + e.message);
+            } finally {
+                app.endUndoGroup();
+            }
+        };
 
         btnPrecomp.onClick = function () {
             var comp = getActiveComp();
