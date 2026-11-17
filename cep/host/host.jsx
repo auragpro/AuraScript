@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.5.5
+// version: 3.5.6
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1723,9 +1723,8 @@
             if (o.matteKey) {
                 M = edgeLayer(comp, o.matteKey);
                 if (!M) return fail("Le calque choisi pour le cache n'existe plus dans cette compo. Rafra\u00eechis la liste.");
-            } else if (!txt) return fail("Choisis d'abord un texte pour ce preset.");
+            }
             var mt = TrackMatteType[EDGE_MATTES[o.matte] || "ALPHA"];
-            var widthPct = Math.max(0.2, Math.min(1, (parseFloat(o.width) || 80) / 100));
             var ffx = o.ffx ? new File(String(o.ffx)) : null;
             if (!ffx) return fail("Ce preset n'a pas de fichier .ffx : fais clic droit dessus pour en choisir un.");
             if (!ffx.exists) return fail("Fichier preset introuvable : " + String(o.ffx));
@@ -1743,7 +1742,7 @@
             }
             if (!vids.length) return fail("S\u00e9lectionne d'abord la vid\u00e9o dans la timeline (ou choisis-la dans la liste \u00ab Vid\u00e9o \u00bb), puis clique sur le preset.");
             for (i = 0; i < vids.length; i++) if (vids[i] === M) return fail("La vid\u00e9o et le cache ne peuvent pas \u00eatre le m\u00eame calque.");
-            var label = M ? M.name : txt;
+            var label = M ? M.name : "";
             var t = comp.time;
             return undoable("Edge Detect Text", function () {
                 var made = [];
@@ -1753,11 +1752,7 @@
                     deselectAll(comp); E.selected = true; comp.time = t;
                     E.applyPreset(ffx);
                     var T = M;
-                    if (!T) {
-                        T = edgeMakeText(comp, txt, widthPct, E);
-                        try { T.name = "TEXTE \u2022 " + txt; } catch (eT) {}
-                        T.moveBefore(E);
-                    }
+                    if (!T) { made.push(E); continue; }   // "Pas de cache" : seulement le preset
                     if (typeof E.setTrackMatte === "function") {
                         E.setTrackMatte(T, mt);
                     } else {
@@ -1772,10 +1767,10 @@
                 for (i = 0; i < made.length; i++) made[i].selected = true;
                 var pc = null;
                 if (o.precomp) {   // case "Precomposer juste apres" cochee
-                    try { pc = precomposeSelected(comp); if (pc) pc.name = uniqueCompName("EDGE - " + label); } catch (eC) { pc = null; }
+                    try { pc = precomposeSelected(comp); if (pc) pc.name = uniqueCompName("EDGE - " + (label || vids[0].name)); } catch (eC) { pc = null; }
                 }
                 var m = "\u00ab " + (o.name || "Edge") + " \u00bb appliqu\u00e9 sur \u00ab " + vids[0].name + " \u00bb" + (vids.length > 1 ? " (+" + (vids.length - 1) + ")" : "") +
-                    ", cache : \u00ab " + label + " \u00bb." + (pc ? " Precomp \u00ab " + pc.name + " \u00bb cr\u00e9\u00e9." : (o.precomp ? " (Precomp impossible.)" : ""));
+                    (M ? ", cache : \u00ab " + label + " \u00bb." : ".") + (pc ? " Precomp \u00ab " + pc.name + " \u00bb cr\u00e9\u00e9." : (o.precomp ? " (Precomp impossible.)" : ""));
                 return ok(m);
             });
         } catch (e) { return fail("Erreur : " + e.message); }
