@@ -1,7 +1,8 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.8.2
-// nouveautes: Détection des paroles : seule la partie gardée de la musique (entre son début et sa fin coupés) est analysée
-// nouveautes: Timing des mots beaucoup plus précis (alignement mot par mot) et moins de mots inventés sur l'instru
+// version: 1.8.3
+// nouveautes: Colle tes paroles dans la zone Lyrics : l'IA trouve quand chacun de TES mots est chanté et pose les marqueurs avec tes mots
+// nouveautes: Zone vide : l'IA écrit elle-même les paroles qu'elle entend
+// nouveautes: Correction : la voix n'était plus reconnue (« aucune parole ») et le pourcentage restait à 0 %
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -812,8 +813,7 @@
         try { if (audioFile.copy(audioCopy.fsName)) audioPath = audioCopy.fsName; } catch (eC) {}
 
         var args = '-m "' + whFile(WH.modelName).fsName + '" -f "' + audioPath + '"' +
-            " -l auto -t " + threads + " -ml 1 -sow -ojf -pp -mc 0 -dtw small -nfa" +
-            (offMs > 0 ? " -ot " + offMs : "") + (durMs > 0 ? " -d " + durMs : "") +
+            " -l auto -t " + threads + " -ml 1 -sow -ojf -pp -sns -dtw small -nfa" +
             ' -of "' + job.fsName + '\\out"';
         var hint = promptFromLyrics(lyricsHint);
         if (hint) args += ' --prompt "' + hint + '"';
@@ -889,6 +889,107 @@
             words.push({ t: dtwStart(txt.substring(sg.end, chunkEnd), sg.from), w: w });
         }
         return words;
+    }
+
+    // ---------- Alignement des paroles collées sur les mots entendus ----------
+
+    function normWord(w) {
+        return stripAccents(String(w)).toLowerCase().replace(/[^a-z0-9]/g, "");
+    }
+
+    function levenshtein(a, b) {
+        if (a === b) return 0;
+        var la = a.length, lb = b.length, i, j;
+        if (!la) return lb;
+        if (!lb) return la;
+        var prev = [], cur = [];
+        for (j = 0; j <= lb; j++) prev[j] = j;
+        for (i = 1; i <= la; i++) {
+            cur = [i];
+            for (j = 1; j <= lb; j++) {
+                var c = (a.charAt(i - 1) === b.charAt(j - 1)) ? 0 : 1;
+                cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + c);
+            }
+            prev = cur;
+        }
+        return prev[lb];
+    }
+
+    function wordSim(a, b) {
+        if (!a || !b) return 0;
+        var m = Math.max(a.length, b.length);
+        return 1 - levenshtein(a, b) / m;
+    }
+
+    // userWords : ["mot", ...] ; heard : [{ t, w }] ; region : [t0, t1] en secondes (temps du fichier audio)
+    // Retourne [{ t, w }] : un temps pour CHAQUE mot collé, dans l'ordre
+    function alignLyrics(userWords, heard, t0, t1) {
+        var U = [], H = [], i, j;
+        for (i = 0; i < userWords.length; i++) U.push(normWord(userWords[i]));
+        for (j = 0; j < heard.length; j++) {
+            if (heard[j].t >= t0 - 1 && heard[j].t <= t1 + 1) H.push({ n: normWord(heard[j].w), t: heard[j].t });
+        }
+        var n = U.length, m = H.length;
+        var times = [];
+        for (i = 0; i < n; i++) times.push(null);
+
+        // programmation dynamique : meilleure correspondance dans l'ordre (mots ressemblants)
+        if (m) {
+            var dp = [], bt = [];
+            for (i = 0; i <= n; i++) { dp.push([]); bt.push([]); for (j = 0; j <= m; j++) { dp[i].push(0); bt[i].push(0); } }
+            for (i = 1; i <= n; i++) {
+                for (j = 1; j <= m; j++) {
+                    var best = dp[i - 1][j], dir = 1;
+                    if (dp[i][j - 1] > best) { best = dp[i][j - 1]; dir = 2; }
+                    var s = wordSim(U[i - 1], H[j - 1].n);
+                    if (s >= 0.5 && dp[i - 1][j - 1] + s > best) { best = dp[i - 1][j - 1] + s; dir = 3; }
+                    dp[i][j] = best;
+                    bt[i][j] = dir;
+                }
+            }
+            i = n; j = m;
+            while (i > 0 && j > 0) {
+                if (bt[i][j] === 3) { times[i - 1] = H[j - 1].t; i--; j--; }
+                else if (bt[i][j] === 1) i--;
+                else j--;
+            }
+        }
+
+        var matched = 0;
+        for (i = 0; i < n; i++) if (times[i] !== null) matched++;
+        if (!matched) return { words: null, matched: 0 };
+
+        // mots non trouvés : répartis entre leurs voisins trouvés (selon la longueur des mots)
+        var step = 0.25;
+        var first = -1, last = -1;
+        for (i = 0; i < n; i++) if (times[i] !== null) { if (first < 0) first = i; last = i; }
+        for (i = first - 1; i >= 0; i--) times[i] = Math.max(t0, times[i + 1] - step);
+        for (i = last + 1; i < n; i++) times[i] = Math.min(t1 - 0.05, times[i - 1] + step);
+        i = first;
+        while (i < last) {
+            var k = i + 1;
+            while (times[k] === null) k++;
+            if (k > i + 1) {
+                var total = 0, acc = 0, q;
+                for (q = i; q < k; q++) total += Math.max(1, U[q].length);
+                for (q = i + 1; q < k; q++) {
+                    acc += Math.max(1, U[q - 1].length);
+                    times[q] = times[i] + (times[k] - times[i]) * acc / total;
+                }
+            }
+            i = k;
+        }
+
+        var out = [], prev = -1;
+        for (i = 0; i < n; i++) {
+            var t = times[i];
+            if (t < t0) t = t0;
+            if (t > t1 - 0.04) t = t1 - 0.04;
+            if (t <= prev + 0.04) t = prev + 0.04;
+            prev = t;
+            out.push({ t: t, w: userWords[i] });
+        }
+        return { words: out, matched: matched };
     }
 
     // Pose un marqueur par mot sur le calque de la musique
@@ -2462,20 +2563,39 @@
 
         function detStartJob() {
             det.phase = "job";
+            det.t0 = new Date().getTime();
             // on n'analyse que la partie de la musique gardée dans la timeline
             var L = det.layer, k = 1;
             try { k = L.stretch / 100; } catch (eK) {}
             if (!k || k < 0) k = 1;
             var srcIn = Math.max(0, (L.inPoint - L.startTime) / k);
             var srcOut = Math.max(srcIn + 0.2, (L.outPoint - L.startTime) / k);
-            det.job = startWhisperJob(det.audio, det.hint, Math.round(srcIn * 1000), Math.round((srcOut - srcIn) * 1000));
-            status.text = "Analyse de la musique : 0 %";
+            det.srcIn = srcIn;
+            det.srcOut = srcOut;
+            det.job = startWhisperJob(det.audio, det.hint, 0, 0);
+            status.text = "Analyse de la musique en cours...";
         }
 
         function detFinish() {
-            var words = readWhisperWords(det.job);
-            if (!words.length) { detStop(); alert("Aucun mot détecté dans cette musique."); return; }
+            var heard = readWhisperWords(det.job);
             var layer = det.layer;
+            // paroles collées par l'utilisateur ?
+            var userWords = [], raw = String(det.hint || "").split(/\s+/);
+            for (var u = 0; u < raw.length; u++) { var uw = trim(raw[u]); if (uw) userWords.push(uw); }
+            var words, aligned = false, matched = 0;
+            if (userWords.length) {
+                var al = alignLyrics(userWords, heard, det.srcIn, det.srcOut);
+                if (!al.words) {
+                    detStop();
+                    alert("L'IA n'a reconnu aucun de tes mots dans la partie gardée de la musique.\n\nVérifie que les paroles collées correspondent bien à ce passage (même langue, même ordre).");
+                    return;
+                }
+                words = al.words; aligned = true; matched = al.matched;
+            } else {
+                words = [];
+                for (var h = 0; h < heard.length; h++) if (heard[h].t >= det.srcIn - 0.05 && heard[h].t < det.srcOut) words.push(heard[h]);
+                if (!words.length) { detStop(); alert("Aucune parole reconnue dans la partie gardée de la musique.\n\nAstuce : colle les paroles dans la zone Lyrics, l'IA s'en servira pour caler chaque mot."); return; }
+            }
             var replace = false;
             try {
                 var mk = layer.property("ADBE Marker");
@@ -2484,15 +2604,18 @@
             app.beginUndoGroup("Détecter les paroles");
             try {
                 var n = placeWordMarkers(layer, words, replace);
-                var list = [];
-                for (var i = 0; i < words.length; i++) list.push(words[i].w);
-                etLyrics.text = list.join(" ");
+                if (!aligned) {
+                    var list = [];
+                    for (var i = 0; i < words.length; i++) list.push(words[i].w);
+                    etLyrics.text = list.join(" ");
+                }
                 try {
                     var comp = layer.containingComp;
                     for (var j = 1; j <= comp.numLayers; j++) comp.layer(j).selected = false;
                     layer.selected = true;
                 } catch (eSel) {}
-                detStop(n + " mot(s) détecté(s) et marqués. Corrige les mots si besoin puis clique sur « Créer les paroles ».");
+                if (aligned) detStop(n + " marqueur(s) posé(s) avec tes paroles (" + matched + " mot(s) entendus par l'IA, les autres placés entre eux). Clique sur « Créer les paroles ».");
+                else detStop(n + " mot(s) détecté(s) et marqués. Corrige les mots si besoin puis clique sur « Créer les paroles ».");
             } catch (e) {
                 detStop();
                 alert("Erreur : " + e.message);
@@ -2520,7 +2643,8 @@
                         alert("L'analyse a échoué.\n\n" + tail);
                         return;
                     }
-                    status.text = "Analyse de la musique : " + j.pct + " %  (After Effects reste utilisable)";
+                    var sec = Math.round((new Date().getTime() - det.t0) / 1000);
+                    status.text = "Analyse de la musique en cours... " + sec + " s" + (j.pct > 0 && j.pct < 100 ? " (" + j.pct + " %)" : "") + "  — After Effects reste utilisable";
                 }
             } catch (e) {
                 detStop();
