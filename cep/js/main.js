@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.0.4";
+    var VERSION = "3.0.5";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -124,6 +124,11 @@
     $("btnPrecomp").onclick = function () { host("precomp").then(function (r) { showResult(r, true); }); };
     $("btnUncomp").onclick = function () { host("uncomp").then(function (r) { showResult(r, true); }); };
     $("btnAnchor").onclick = function () { host("anchor").then(function (r) { showResult(r); }); };
+    $("btnReverse").onclick = function () { host("reverse").then(function (r) { showResult(r); }); };
+    $("btnDuplicate").onclick = function () { host("duplicate").then(function (r) { showResult(r); }); };
+    try { $("solidColor").value = localStorage.getItem("aura.solid") || "#000000"; } catch (e) {}
+    $("solidColor").addEventListener("change", function () { try { localStorage.setItem("aura.solid", $("solidColor").value); } catch (e) {} });
+    $("btnSolid").onclick = function () { host("solid", J($("solidColor").value)).then(function (r) { showResult(r); }); };
 
     // =====================================================================
     // INTRO : paroles, presets, casse
