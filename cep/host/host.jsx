@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.4.4
+// version: 3.4.6
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1595,6 +1595,76 @@
                 }
                 var m = done + " calque(s) " + (mode === "fill" ? "remplissent la compo" : "ajust\u00e9(s) \u00e0 la compo") + (done === 1 ? info : "") + ".";
                 if (skipped) m += " " + skipped + " ignor\u00e9(s) (\u00e9chelle anim\u00e9e ou calque sans taille).";
+                return ok(m);
+            });
+        } catch (e) { return fail("Erreur : " + e.message); }
+    };
+
+    // ---------- Texte avec style : Biseautage et estampage + Incrustation en degrade ----------
+    function styleCmdIds(names, fallback) {
+        var ids = [];
+        for (var i = 0; i < names.length; i++) { try { var id = app.findMenuCommandId(names[i]); if (id && ids.join(",").indexOf(String(id)) < 0) ids.push(id); } catch (e) {} }
+        if (ids.join(",").indexOf(String(fallback)) < 0) ids.push(fallback);
+        return ids;
+    }
+    function styleGroup(layer, match) {
+        try { var g = layer.property("ADBE Layer Styles").property(match); return g; } catch (e) { return null; }
+    }
+    function styleOn(layer, match) {
+        var g = styleGroup(layer, match);
+        try { return !!(g && g.enabled && layer.property("ADBE Layer Styles").enabled); } catch (e) { return false; }
+    }
+    // ajoute un style de calque (via le menu Calque > Styles de calque) s'il n'est pas deja present
+    function addLayerStyle(comp, layer, match, names, fallback) {
+        if (styleOn(layer, match)) return true;
+        deselectAll(comp); layer.selected = true;
+        var ids = styleCmdIds(names, fallback);
+        for (var i = 0; i < ids.length; i++) {
+            try { app.executeCommand(ids[i]); } catch (e) {}
+            if (styleOn(layer, match)) return true;
+        }
+        return false;
+    }
+    function setStyleProp(layer, groupMatch, propMatch, value) {
+        try { var p = styleGroup(layer, groupMatch).property(propMatch); if (p && p.numKeys === 0) { p.setValue(value); return true; } } catch (e) {}
+        return false;
+    }
+    API.styledText = function (sizeArg) {
+        try {
+            var comp = needComp();
+            var size = parseFloat(arg(sizeArg)); if (!(size >= 0)) size = 10; if (size > 250) size = 250;
+            var sel = comp.selectedLayers, texts = [], others = [], i;
+            for (i = 0; i < sel.length; i++) { if (sel[i] instanceof TextLayer) texts.push(sel[i]); else others.push(sel[i]); }
+            return undoable("Texte biseaut\u00e9", function () {
+                var created = 0;
+                if (!texts.length) {
+                    if (others.length) {
+                        for (i = 0; i < others.length; i++) { texts.push(createSpanLayerFor(comp, others[i], "text")); created++; }
+                    } else {
+                        var t = comp.layers.addText("Texte");
+                        var prop = getTextDocProp(t), td = prop.value;
+                        td.justification = ParagraphJustification.CENTER_JUSTIFY;
+                        try { td.fontSize = Math.round(comp.height / 8); } catch (eF) {}
+                        prop.setValue(td);
+                        centerTextLayer(t, comp);
+                        texts.push(t); created++;
+                    }
+                }
+                var okB = 0, okG = 0;
+                for (i = 0; i < texts.length; i++) {
+                    var L = texts[i];
+                    if (addLayerStyle(comp, L, "bevelEmboss/enabled", ["Bevel and Emboss", "Biseautage et estampage"], 9004)) {
+                        okB++;
+                        setStyleProp(L, "bevelEmboss/enabled", "bevelEmboss/blur", size);
+                    }
+                    if (addLayerStyle(comp, L, "gradientFill/enabled", ["Gradient Overlay", "Incrustation en d\u00e9grad\u00e9"], 9007)) okG++;
+                }
+                deselectAll(comp);
+                for (i = 0; i < texts.length; i++) texts[i].selected = true;
+                if (!okB && !okG) return fail("Impossible d'ajouter les styles de calque. Essaie : Calque > Styles de calque > Biseautage et estampage.");
+                var m = (created ? created + " texte(s) cr\u00e9\u00e9(s)" : texts.length + " texte(s) mis \u00e0 jour") +
+                    " : biseautage et estampage (taille " + size + ") + incrustation en d\u00e9grad\u00e9.";
+                if (okB < texts.length || okG < texts.length) m += " Certains styles n'ont pas pu \u00eatre ajout\u00e9s.";
                 return ok(m);
             });
         } catch (e) { return fail("Erreur : " + e.message); }
