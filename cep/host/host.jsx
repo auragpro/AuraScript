@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.1.5
+// version: 3.2.1
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1548,6 +1548,13 @@
                 return ok(m);
             });
         } catch (e) { return fail("Erreur : " + e.message); }
+    };
+
+    // ---------- image de fond du panneau ----------
+    API.bgPickImage = function () {
+        var filter = isWindows() ? "Images:*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp" : function (f) { return (f instanceof Folder) || /\.(png|jpe?g|gif|bmp|webp)$/i.test(f.name); };
+        var f = File.openDialog("Choisis une image de fond", filter, false);
+        return ok("", f ? f.fsName : "");
     };
 
     API.ping = function () { return ok("pong", { ae: app.version, os: $.os }); };
