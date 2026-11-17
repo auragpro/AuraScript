@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.5.1";
+    var VERSION = "3.5.2";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -770,10 +770,30 @@
         function apply(p) {
             last = p.id; render();
             status("Application de « " + p.name + " »...");
-            return host("edgeText", J({ name: p.name, text: p.text, matte: p.matte, width: p.width, ffx: p.ffx || "" })).then(function (r) {
+            return host("edgeText", J({ name: p.name, text: p.text, matte: p.matte, width: p.width, ffx: p.ffx || "", videoKey: $("edVid").value, matteKey: $("edMat").value })).then(function (r) {
+                setTimeout(refreshLayers, 150);
                 if (!r.ok && /Sélectionne d'abord la vid/.test(r.msg || "")) { status("Preset prêt. " + r.msg); return r; }
                 return showResult(r);
             });
+        }
+
+        // ---- listes "Vidéo" et "Cache" : calques de la compo active (comme le menu Cache d'AE) ----
+        var busy = false;
+        function fill(sel, first, items) {
+            var keep = sel.value;
+            sel.innerHTML = "";
+            var o0 = document.createElement("option"); o0.value = ""; o0.textContent = first; sel.appendChild(o0);
+            items.forEach(function (L) { var o = document.createElement("option"); o.value = L.key; o.textContent = L.index + ". " + L.name; sel.appendChild(o); });
+            sel.value = [].some.call(sel.options, function (o) { return o.value === keep; }) ? keep : "";
+        }
+        function refreshLayers() {
+            if (busy) return; busy = true;
+            host("edgeLayers").then(function (r) {
+                busy = false;
+                var ls = (r && r.ok && r.data && r.data.layers) || [];
+                fill($("edVid"), "Vidéo sélectionnée", ls.filter(function (L) { return L.kind === "video"; }));
+                fill($("edMat"), "Nouveau texte (celui du preset)", ls);
+            }, function () { busy = false; });
         }
 
         // ---- liste des presets ----
@@ -884,7 +904,10 @@
 
         function init() {
             if (!fs) { $("edList").innerHTML = '<div class="fx-empty">Cette fonction a besoin de Node.js.</div>'; return; }
-            load(); render();
+            load(); render(); refreshLayers();
+            $("edRefresh").onclick = refreshLayers;
+            $("edLink").addEventListener("mouseenter", refreshLayers);
+            var tb = document.querySelector('.tab[data-page="intro"]'); if (tb) tb.addEventListener("click", refreshLayers);
             $("edAdd").onclick = function () { if (!$("edForm").classList.contains("hidden") && !editId) closeForm(); else openForm(null); };
             $("edCancel").onclick = closeForm;
             $("edSave").onclick = submit;
