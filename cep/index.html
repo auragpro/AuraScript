@@ -46,7 +46,15 @@
         <button class="btn grow" id="btnDuplicate">Dupliquer</button>
       </div>
       <div class="row">
-        <input type="color" id="solidColor" value="#000000" title="Couleur du solide">
+        <div class="pk-wrap">
+          <button class="pk-swatch" id="solidSwatch" title="Couleur du solide"></button>
+          <div class="picker hidden" id="picker">
+            <canvas id="pkSV" class="pk-sv"></canvas>
+            <canvas id="pkHue" class="pk-hue"></canvas>
+            <div class="pk-presets" id="pkPresets"></div>
+            <div class="row center"><span class="muted">#</span><input id="pkHex" class="pk-hex" maxlength="7" spellcheck="false"><button class="btn small" id="pkOk">OK</button></div>
+          </div>
+        </div>
         <button class="btn grow" id="btnSolid">Solide</button>
       </div>
     </section>
