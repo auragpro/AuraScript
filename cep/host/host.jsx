@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.4.8
+// version: 3.4.9
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1632,7 +1632,7 @@
     API.styledText = function (sizeArg) {
         try {
             var comp = needComp();
-            var size = parseFloat(arg(sizeArg)); if (!(size >= 0)) size = 10; if (size > 250) size = 250;
+            var size = parseFloat(arg(sizeArg)); if (!(size >= 0)) size = 5; if (size > 250) size = 250;
             var sel = comp.selectedLayers, texts = [], others = [], i;
             for (i = 0; i < sel.length; i++) { if (sel[i] instanceof TextLayer) texts.push(sel[i]); else others.push(sel[i]); }
             return undoable("Texte incrustation", function () {
