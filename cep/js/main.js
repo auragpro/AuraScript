@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.2.2";
+    var VERSION = "3.3.0";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -55,7 +55,15 @@
     // Messages, fenêtres
     // =====================================================================
 
-    function status(msg) { $("status").textContent = msg || ""; $("status").title = msg || ""; }
+    // message en bas des onglets : il s'efface tout seul après quelques secondes
+    var statusT = 0, statusT2 = 0;
+    function status(msg) {
+        var el = $("status");
+        clearTimeout(statusT); clearTimeout(statusT2);
+        el.classList.remove("fade");
+        el.textContent = msg || ""; el.title = msg || "";
+        if (msg) statusT = setTimeout(function () { el.classList.add("fade"); statusT2 = setTimeout(function () { el.textContent = ""; el.classList.remove("fade"); }, 300); }, 6000);
+    }
 
     function showResult(r, silentOk) {
         if (!r) return;
