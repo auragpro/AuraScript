@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.5.2
+// version: 3.5.3
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1671,7 +1671,7 @@
     };
 
     // ---------- EDGE DETECT TEXT ----------
-    // video selectionnee -> copie avec TON preset .ffx -> visible seulement a travers un texte (cache)
+    // TON preset .ffx directement sur la video -> visible seulement a travers un texte (cache)
     var EDGE_MATTES = { alpha: "ALPHA", alphaInv: "ALPHA_INVERTED", luma: "LUMA", lumaInv: "LUMA_INVERTED" };
     function edgeMakeText(comp, txt, widthPct, above) {
         var T = comp.layers.addText(txt);
@@ -1749,9 +1749,7 @@
                 var made = [];
                 for (i = 0; i < vids.length; i++) {
                     var V = vids[i];
-                    var E = V.duplicate();
-                    try { E.name = "EDGE \u2022 " + label; } catch (eN) {}
-                    try { if (E.hasAudio) E.audioEnabled = false; } catch (eA) {}
+                    var E = V;   // le preset va directement sur la video (pas de copie)
                     deselectAll(comp); E.selected = true; comp.time = t;
                     E.applyPreset(ffx);
                     var T = M;
