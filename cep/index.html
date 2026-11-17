@@ -23,9 +23,15 @@
     <label class="th-check"><input type="checkbox" id="thCompact"> Mode compact (boutons plus petits)</label>
     <h4>Animations</h4>
     <label class="th-check"><input type="checkbox" id="thAnim"> Lumière et couleurs animées</label>
-    <div class="th-seg th-seg3" id="thAnimDir">
-      <button data-m="lr">Horizontale</button><button data-m="diag">Diagonale</button><button data-m="both">Les deux</button>
+    <div class="th-sub">Lumière</div>
+    <div class="th-seg th-seg3" id="thLight">
+      <button data-m="edge">Contours</button><button data-m="beam">Faisceau</button><button data-m="both">Les deux</button>
     </div>
+    <div class="th-sub">Direction</div>
+    <div class="th-seg th-seg2" id="thAnimDir">
+      <button data-m="lr">Gauche → droite</button><button data-m="diag">Diagonale</button>
+    </div>
+    <div class="th-row"><label>Intensité</label><input type="range" id="thLi" min="0" max="100" step="5"><span class="val" id="thLiV"></span></div>
     <div class="th-row"><label>Vitesse</label><input type="range" id="thAnimSpd" min="1" max="5" step="1"><span class="val" id="thAnimSpdV"></span></div>
     <h4>Fond</h4>
     <div class="th-seg" id="thBgMode">
