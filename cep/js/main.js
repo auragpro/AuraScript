@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.1.7";
+    var VERSION = "3.1.8";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -642,6 +642,7 @@
             }
         }
         g.strokeStyle = color; g.lineWidth = width; g.lineJoin = "round";
+        if (width >= 2) { g.shadowColor = "rgba(184,176,255,.75)"; g.shadowBlur = 10; }
         g.beginPath();
         for (var s2 = 0; s2 < c.segs.length; s2++) {
             var hh = segHandles(c, s2);
@@ -651,6 +652,7 @@
             }
         }
         g.stroke();
+        g.shadowBlur = 0;
     }
 
     function sq(g, x, y, r, color) { g.fillStyle = color; g.fillRect(Math.round(x - r), Math.round(y - r), 2 * r, 2 * r); }
