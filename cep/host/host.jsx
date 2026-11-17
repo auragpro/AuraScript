@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.5.4
+// version: 3.5.5
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1777,6 +1777,30 @@
                 var m = "\u00ab " + (o.name || "Edge") + " \u00bb appliqu\u00e9 sur \u00ab " + vids[0].name + " \u00bb" + (vids.length > 1 ? " (+" + (vids.length - 1) + ")" : "") +
                     ", cache : \u00ab " + label + " \u00bb." + (pc ? " Precomp \u00ab " + pc.name + " \u00bb cr\u00e9\u00e9." : (o.precomp ? " (Precomp impossible.)" : ""));
                 return ok(m);
+            });
+        } catch (e) { return fail("Erreur : " + e.message); }
+    };
+
+    // Biseautage et estampage sur les calques selectionnes (onglet Outils)
+    API.bevelSelected = function (sizeArg) {
+        try {
+            var comp = needComp();
+            var size = parseFloat(arg(sizeArg)); if (!(size >= 0)) size = 5; if (size > 250) size = 250;
+            var sel = comp.selectedLayers, src = [], i;
+            for (i = 0; i < sel.length; i++) if (!(sel[i] instanceof CameraLayer) && !(sel[i] instanceof LightLayer)) src.push(sel[i]);
+            if (!src.length) return fail("S\u00e9lectionne d'abord un ou plusieurs calques.");
+            return undoable("Biseautage et estampage", function () {
+                var done = 0;
+                for (i = 0; i < src.length; i++) {
+                    if (addLayerStyle(comp, src[i], "bevelEmboss/enabled", ["Bevel and Emboss", "Biseautage et estampage"], 9004)) {
+                        done++;
+                        setStyleProp(src[i], "bevelEmboss/enabled", "bevelEmboss/blur", size);
+                    }
+                }
+                deselectAll(comp);
+                for (i = 0; i < src.length; i++) src[i].selected = true;
+                if (!done) return fail("Impossible d'ajouter le biseautage. Essaie : Calque > Styles de calque > Biseautage et estampage.");
+                return ok("Biseautage et estampage (taille " + size + ") sur " + done + " calque(s)." + (done < src.length ? " " + (src.length - done) + " ignor\u00e9(s)." : ""));
             });
         } catch (e) { return fail("Erreur : " + e.message); }
     };
