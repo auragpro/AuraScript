@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.4.2";
+    var VERSION = "3.4.3";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -507,7 +507,39 @@
             }).then(function () { ttBusy = false; box.disabled = false; btn.disabled = false; });
         }
         // extraire l'audio : copie du calque en audio seul, directement dans la timeline (aucun fichier créé)
-        function extractAudio() { host("splitAudio").then(function (r) { showResult(r); }); }
+        // extraire l'audio en MP3 : le son de la vidéo devient un calque MP3 juste en dessous
+        // (le fichier est rangé dans le dossier d'AuraScript, rien sur le Bureau ni dans Téléchargements)
+        function extractAudio() {
+            var ff = (fs && cp) ? ffmpegPath() : null;
+            if (!ff) { host("splitAudio").then(function (r) { showResult(r); }); return; }
+            host("videoLayers").then(function (r) {
+                if (!r.ok) { showResult(r); return; }
+                var dir = path.join(process.env.APPDATA || os.homedir(), "AuraScript", "audio");
+                fs.mkdirSync(dir, { recursive: true });
+                var list = r.data.sort(function (a, b) { return b.index - a.index; }), i = 0;
+                function next() {
+                    if (i >= list.length) return;
+                    var v = list[i++];
+                    var base = path.join(dir, path.basename(v.path).replace(/\.[^.]+$/, "").replace(/[^\w\-]+/g, "_").slice(0, 60) + "_" + stamp());
+                    status("Extraction du son en MP3" + (list.length > 1 ? " (" + i + "/" + list.length + ")" : "") + "...");
+                    var mp3 = base + ".mp3";
+                    spawnText(ff, ["-hide_banner", "-loglevel", "error", "-y", "-i", v.path, "-vn", "-c:a", "libmp3lame", "-q:a", "2", mp3]).then(function (x) {
+                        if (x.code === 0 && fs.existsSync(mp3)) return mp3;
+                        var wav = base + ".wav";   // si le MP3 n'est pas disponible : WAV
+                        return spawnText(ff, ["-hide_banner", "-loglevel", "error", "-y", "-i", v.path, "-vn", "-c:a", "pcm_s16le", wav]).then(function (y) {
+                            if (y.code === 0 && fs.existsSync(wav)) return wav;
+                            throw new Error(String(x.err || y.err || "").slice(-300));
+                        });
+                    }).then(function (file) {
+                        return host("placeAudio", v.compId, v.index, J(file)).then(function (r2) { showResult(r2); next(); });
+                    }).catch(function (e) {
+                        modal("Impossible d'extraire le son de « " + v.name + " ».\n" + (e && e.message ? e.message : ""), { cancel: false });
+                        next();
+                    });
+                }
+                next();
+            });
+        }
         return { run: run, tiktok: tiktok, extractAudio: extractAudio };
     })();
     $("btnPasteImg").onclick = function () { PasteImage.run(); };
