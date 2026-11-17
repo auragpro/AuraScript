@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.2.1
+// version: 3.4.4
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1555,6 +1555,49 @@
         var filter = isWindows() ? "Images:*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp" : function (f) { return (f instanceof Folder) || /\.(png|jpe?g|gif|bmp|webp)$/i.test(f.name); };
         var f = File.openDialog("Choisis une image de fond", filter, false);
         return ok("", f ? f.fsName : "");
+    };
+
+    // ---------- Ajuster / Remplir la compo ----------
+    // fit : toute l'image visible (bandes possibles) ; fill : remplit tout l'ecran (bords coupes)
+    API.fitLayers = function (modeJson) {
+        try {
+            var comp = needComp();
+            var mode = String(arg(modeJson) || "fit");
+            var sel = comp.selectedLayers, src = [], i;
+            for (i = 0; i < sel.length; i++) src.push(sel[i]);
+            if (!src.length) return fail("S\u00e9lectionne d'abord la vid\u00e9o ou l'image \u00e0 redimensionner.");
+            return undoable(mode === "fill" ? "Remplir la compo" : "Ajuster \u00e0 la compo", function () {
+                var done = 0, skipped = 0, info = "";
+                for (i = 0; i < src.length; i++) {
+                    var L = src[i];
+                    try {
+                        var w = 0, h = 0, par = 1;
+                        if (L.source && L.source.width) { w = L.source.width; h = L.source.height; par = L.source.pixelAspect || 1; }
+                        else { var rc = L.sourceRectAtTime(comp.time, false); w = rc.width; h = rc.height; }
+                        if (!(w > 0 && h > 0)) { skipped++; continue; }
+                        var vw = w * par / (comp.pixelAspect || 1);
+                        var k = (mode === "fill" ? Math.max(comp.width / vw, comp.height / h) : Math.min(comp.width / vw, comp.height / h)) * 100;
+                        var tr = L.property("ADBE Transform Group");
+                        var sc = tr.property("ADBE Scale"), ap = tr.property("ADBE Anchor Point"), pos = tr.property("ADBE Position");
+                        if (sc.numKeys > 0 || sc.expressionEnabled) { skipped++; continue; }
+                        var old = sc.value, sx = old[0] < 0 ? -k : k, sy = old[1] < 0 ? -k : k;
+                        var nv = [sx, sy]; if (old.length > 2) nv.push(old[2]);
+                        sc.setValue(nv);
+                        if (L.source && L.source.width && ap.numKeys === 0 && !ap.expressionEnabled) {
+                            var a = [w / 2, h / 2]; if (ap.value.length > 2) a.push(0); ap.setValue(a);
+                        }
+                        if (!pos.dimensionsSeparated && pos.numKeys === 0 && !pos.expressionEnabled) {
+                            var c = [comp.width / 2, comp.height / 2]; if (pos.value.length > 2) c.push(pos.value[2]); pos.setValue(c);
+                        }
+                        done++;
+                        if (!info) info = " (" + w + "\u00d7" + h + " \u2192 " + comp.width + "\u00d7" + comp.height + ", " + Math.round(k * 10) / 10 + " %)";
+                    } catch (e1) { skipped++; }
+                }
+                var m = done + " calque(s) " + (mode === "fill" ? "remplissent la compo" : "ajust\u00e9(s) \u00e0 la compo") + (done === 1 ? info : "") + ".";
+                if (skipped) m += " " + skipped + " ignor\u00e9(s) (\u00e9chelle anim\u00e9e ou calque sans taille).";
+                return ok(m);
+            });
+        } catch (e) { return fail("Erreur : " + e.message); }
     };
 
     API.ping = function () { return ok("pong", { ae: app.version, os: $.os }); };
