@@ -1,5 +1,5 @@
 {
-  "version": "3.4.9",
+  "version": "3.5.0",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,6 +9,6 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "« Texte incrustation » : taille du biseautage à 5 par défaut"
+    "Nouvelle catégorie EDGE DETECT TEXT (onglet Texte) : bouton + pour créer un preset (texte + cache + contours) qui s'applique tout de suite sur la vidéo sélectionnée"
   ]
 }
