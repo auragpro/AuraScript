@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.1.1
+// version: 3.1.2
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1439,6 +1439,78 @@
                 deselectAll(comp);
                 lay.selected = true;
                 return ok("\u00ab " + name + " \u00bb mis sur un nouveau calque d'effet.");
+            });
+        } catch (e) { return fail("Erreur : " + e.message); }
+    };
+
+    // ---------- Extraire l'audio (video TikTok ou autre) ----------
+    function findCompById(id) {
+        for (var i = 1; i <= app.project.numItems; i++) { var it = app.project.item(i); if (it instanceof CompItem && it.id === id) return it; }
+        return null;
+    }
+
+    API.videoLayers = function () {
+        try {
+            var comp = needComp();
+            var sel = comp.selectedLayers, out = [];
+            for (var i = 0; i < sel.length; i++) {
+                var L = sel[i];
+                try {
+                    if (L.hasAudio && L.hasVideo && L.source && L.source.file) out.push({ compId: comp.id, index: L.index, name: L.name, path: L.source.file.fsName });
+                } catch (e) {}
+            }
+            if (!out.length) return fail("S\u00e9lectionne la vid\u00e9o TikTok (un calque vid\u00e9o avec du son) dans la timeline.");
+            return ok("", out);
+        } catch (e) { return fail(e.message); }
+    };
+
+    // ajoute le fichier audio extrait juste sous la video, cale au meme endroit, et coupe le son de la video
+    API.placeAudio = function (compId, index, audioJson) {
+        try {
+            var comp = findCompById(compId);
+            if (!comp) return fail("Composition introuvable.");
+            var src = comp.layer(index);
+            var f = new File(String(arg(audioJson)));
+            if (!f.exists) return fail("Fichier audio introuvable.");
+            return undoable("Extraire l'audio", function () {
+                var item = app.project.importFile(new ImportOptions(f));
+                try { item.parentFolder = imagesFolder("AuraScript Audio"); } catch (e1) {}
+                var A = comp.layers.add(item);
+                try { A.stretch = src.stretch; } catch (e2) {}
+                A.startTime = src.startTime;
+                A.inPoint = src.inPoint;
+                A.outPoint = src.outPoint;
+                A.moveAfter(src);
+                try { A.name = "Audio - " + src.name; } catch (e3) {}
+                try { src.audioEnabled = false; } catch (e4) {}
+                deselectAll(comp);
+                A.selected = true;
+                return ok("Audio extrait : \u00ab " + A.name + " \u00bb (le son de la vid\u00e9o est coup\u00e9).");
+            });
+        } catch (e) { return fail("Erreur : " + e.message); }
+    };
+
+    // sans ffmpeg : copie du calque en audio seul
+    API.splitAudio = function () {
+        try {
+            var comp = needComp();
+            var sel = comp.selectedLayers, src = [], i;
+            for (i = 0; i < sel.length; i++) { try { if (sel[i].hasAudio && sel[i].hasVideo) src.push(sel[i]); } catch (e) {} }
+            if (!src.length) return fail("S\u00e9lectionne la vid\u00e9o TikTok (un calque vid\u00e9o avec du son) dans la timeline.");
+            return undoable("Extraire l'audio", function () {
+                var made = [];
+                for (i = 0; i < src.length; i++) {
+                    var A = src[i].duplicate();
+                    A.moveAfter(src[i]);
+                    A.enabled = false;
+                    A.audioEnabled = true;
+                    try { A.name = "Audio - " + src[i].name; } catch (e1) {}
+                    src[i].audioEnabled = false;
+                    made.push(A);
+                }
+                deselectAll(comp);
+                for (i = 0; i < made.length; i++) made[i].selected = true;
+                return ok(made.length + " audio(s) extrait(s).");
             });
         } catch (e) { return fail("Erreur : " + e.message); }
     };
