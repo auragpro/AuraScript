@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.0.9";
+    var VERSION = "3.1.0";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -277,12 +277,9 @@
                 }
                 if (res.indexOf("TEXT:") === 0) {
                     var t = res.slice(5).trim();
-                    if (TIKTOK.test(t)) return downloadTikTok(t.split(/\s+/)[0]);
-                    var link = (/https?:\/\/\S+/i.exec(t) || [])[0];
-                    if (link && TIKTOK.test(link)) return downloadTikTok(link);
                     if (/^https?:\/\/\S+$/i.test(t)) { status("Téléchargement de l'image..."); return download(t, base); }
                     if (/^[a-z]:\\.+/i.test(t) && fs.existsSync(t)) return t;
-                    throw new Error("Le presse-papiers contient du texte, pas une image ni un lien TikTok.\n\nSur Google ou Pinterest : clic droit sur l'image > Copier l'image.\nSur TikTok : Partager > Copier le lien.");
+                    throw new Error("Le presse-papiers contient du texte, pas une image.\n\nSur Google ou Pinterest : clic droit sur l'image > Copier l'image.\nPour un lien TikTok, colle-le dans la case juste en dessous.");
                 }
                 if (res.indexOf("ERR:") === 0) throw new Error("Lecture du presse-papiers impossible.\n" + res.slice(4).slice(-300));
                 throw new Error("Aucune image dans le presse-papiers.\n\nSur Google ou Pinterest : clic droit sur l'image > Copier l'image, puis reclique ici.");
@@ -294,9 +291,28 @@
                 if (m) modal(m, { cancel: false });
             });
         }
-        return { run: run };
+        // case « lien TikTok » + bouton Entrée
+        var ttBusy = false;
+        function tiktok() {
+            if (ttBusy) return;
+            if (!fs || !cp) { modal("Cette fonction a besoin de Node.js, qui n'est pas disponible dans ce panneau.", { cancel: false }); return; }
+            var box = $("ttUrl"), btn = $("btnTikTok");
+            var link = (/https?:\/\/\S+/i.exec(box.value) || [])[0];
+            if (!link || !TIKTOK.test(link)) { modal("Colle un lien TikTok valide.\n\nSur TikTok : Partager > Copier le lien.", { cancel: false }); return; }
+            ttBusy = true; box.disabled = true; btn.disabled = true;
+            downloadTikTok(link).then(function (file) {
+                return host("importImage", J(file)).then(function (r) { showResult(r); if (r.ok) box.value = ""; });
+            }).catch(function (e) {
+                status("");
+                var m = e && e.message !== undefined ? e.message : String(e);
+                if (m) modal(m, { cancel: false });
+            }).then(function () { ttBusy = false; box.disabled = false; btn.disabled = false; });
+        }
+        return { run: run, tiktok: tiktok };
     })();
     $("btnPasteImg").onclick = function () { PasteImage.run(); };
+    $("btnTikTok").onclick = function () { PasteImage.tiktok(); };
+    $("ttUrl").addEventListener("keydown", function (e) { if (e.key === "Enter") PasteImage.tiktok(); });
 
     // ---------- sélecteur de couleur (thème sombre) ----------
     var Picker = (function () {
