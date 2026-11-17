@@ -1,6 +1,6 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.9.1
-// nouveautes: Détection des paroles allégée : petit modèle IA uniquement, fichiers inutiles supprimés (≈ 355 Mo au lieu de ≈ 960 Mo)
+// version: 1.9.2
+// nouveautes: INTRO : boutons « Majuscule » et « Minuscule » pour changer la casse des textes sélectionnés
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -29,6 +29,26 @@
 
     function getTextDocProp(layer) {
         return layer.property("ADBE Text Properties").property("ADBE Text Document");
+    }
+
+    // Met en MAJUSCULES ou en minuscules les calques texte sélectionnés (keyframes de texte comprises)
+    function changeTextCase(comp, upper) {
+        var sel = comp.selectedLayers, count = 0;
+        function conv(td) {
+            td.text = upper ? String(td.text).toUpperCase() : String(td.text).toLowerCase();
+            return td;
+        }
+        for (var i = 0; i < sel.length; i++) {
+            if (!(sel[i] instanceof TextLayer)) continue;
+            var prop = getTextDocProp(sel[i]);
+            if (prop.numKeys > 0) {
+                for (var k = 1; k <= prop.numKeys; k++) prop.setValueAtKey(k, conv(prop.keyValue(k)));
+            } else {
+                prop.setValue(conv(prop.value));
+            }
+            count++;
+        }
+        return count;
     }
 
     function deselectAll(comp) {
@@ -2619,6 +2639,17 @@
         btnApply.preferredSize = [86, 28];
         btnApply.helpTip = "Applique le preset choisi aux textes sélectionnés (étiré sur toute leur durée)";
 
+        var gCase = pLyr.add("group");
+        gCase.orientation = "row";
+        gCase.alignChildren = ["fill", "center"];
+        gCase.spacing = 4;
+        var btnUpper = themeButton(gCase.add("button", undefined, "Majuscule"));
+        btnUpper.preferredSize = [128, 24];
+        btnUpper.helpTip = "Met les textes sélectionnés en MAJUSCULES";
+        var btnLower = themeButton(gCase.add("button", undefined, "Minuscule"));
+        btnLower.preferredSize = [128, 24];
+        btnLower.helpTip = "Met les textes sélectionnés en minuscules";
+
         // ---------- Page Courbe ----------
         function setStatus(t) { status.text = t; }
         try {
@@ -2978,6 +3009,23 @@
             refreshPresetList(idx - 1);
             status.text = "Preset retiré de la liste.";
         };
+
+        function onCase(upper) {
+            var comp = getActiveComp();
+            if (!comp) { alert("Ouvre d'abord une composition."); return; }
+            app.beginUndoGroup(upper ? "Majuscule" : "Minuscule");
+            try {
+                var n = changeTextCase(comp, upper);
+                if (!n) alert("Sélectionne un ou plusieurs calques texte dans la timeline.");
+                else status.text = n + " texte(s) mis en " + (upper ? "majuscules." : "minuscules.");
+            } catch (e) {
+                alert("Erreur : " + e.message);
+            } finally {
+                app.endUndoGroup();
+            }
+        }
+        btnUpper.onClick = function () { onCase(true); };
+        btnLower.onClick = function () { onCase(false); };
 
         btnApply.onClick = function () {
             var comp = getActiveComp();
