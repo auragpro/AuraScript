@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.2.0";
+    var VERSION = "3.2.1";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -102,7 +102,8 @@
             { id: "gold", name: "Or", acc: [255, 202, 96], acc2: "#fff1b8", tint: "#33270f" },
             { id: "ice", name: "Glace", acc: [228, 232, 245], acc2: "#ffffff", tint: "#24252e" }
         ];
-        var DEF = { id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false };
+        var DEF = { id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45 };
+        var BG_SW = ["#000000", "#0d0d10", "#101826", "#0f1f2e", "#1a1030", "#2a1240", "#0f2418", "#2a0f14"];
         var st = {};
         function load() { try { st = JSON.parse(localStorage.getItem("aura.theme") || "{}"); } catch (e) { st = {}; } for (var k in DEF) if (st[k] === undefined) st[k] = DEF[k]; }
         function save() { try { localStorage.setItem("aura.theme", JSON.stringify(st)); } catch (e) {} }
@@ -124,8 +125,23 @@
             r.setProperty("--rad", st.rad + "px");
             r.setProperty("--fs", st.fs + "px");
             document.body.classList.toggle("compact", !!st.compact);
+            applyBg();
             window.__glowColor = gk > 0 ? "rgba(" + t.acc.join(",") + "," + Math.min(1, 0.75 * gk) + ")" : null;
             try { requestAnimationFrame(function () { drawEditor(); drawThumbs(); }); } catch (e) {}
+        }
+        // fond : couleur du thème, couleur unie, dégradé ou image
+        function fileUrl(p) { return "file:///" + encodeURI(String(p).replace(/\\/g, "/")).replace(/#/g, "%23").replace(/\?/g, "%3F"); }
+        function applyBg() {
+            var b = document.body.style;
+            b.background = ""; b.backgroundImage = ""; b.backgroundColor = "";
+            if (st.bg === "color" && hexRgb(st.bg1)) b.background = st.bg1;
+            else if (st.bg === "grad" && hexRgb(st.bg1) && hexRgb(st.bg2)) b.background = "linear-gradient(160deg, " + st.bg1 + " 0%, " + st.bg2 + " 100%)";
+            else if (st.bg === "image" && st.bgImg) {
+                var d = Math.max(0, Math.min(0.9, st.bgDim / 100));
+                b.backgroundColor = "#0f0e12";
+                b.backgroundImage = "linear-gradient(rgba(10,9,13," + d + "), rgba(10,9,13," + d + ")), url(\"" + fileUrl(st.bgImg) + "\")";
+                b.backgroundSize = "cover"; b.backgroundPosition = "center"; b.backgroundRepeat = "no-repeat";
+            }
         }
         function sync() {
             Array.prototype.forEach.call(document.querySelectorAll(".th-sw"), function (b) { b.classList.toggle("on", !st.hex && b.getAttribute("data-id") === st.id); });
@@ -134,6 +150,15 @@
             $("thRad").value = st.rad; $("thRadV").textContent = st.rad + "px";
             $("thFs").value = st.fs; $("thFsV").textContent = st.fs + "px";
             $("thCompact").checked = !!st.compact;
+            Array.prototype.forEach.call(document.querySelectorAll("#thBgMode button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === st.bg); });
+            $("thBgColorBox").classList.toggle("hidden", st.bg !== "color" && st.bg !== "grad");
+            $("thBg2Row").classList.toggle("hidden", st.bg !== "grad");
+            $("thBg1L").textContent = st.bg === "grad" ? "Couleur 1" : "Couleur";
+            $("thBgImgBox").classList.toggle("hidden", st.bg !== "image");
+            if (document.activeElement !== $("thBg1")) $("thBg1").value = st.bg1 || "";
+            if (document.activeElement !== $("thBg2")) $("thBg2").value = st.bg2 || "";
+            $("thBgDim").value = st.bgDim; $("thBgDimV").textContent = st.bgDim + "%";
+            $("thBgPick").textContent = st.bgImg ? "Image : " + st.bgImg.split(/[\\\/]/).pop() : "Choisir une image...";
         }
         function set(k, v) { st[k] = v; save(); apply(); sync(); }
         function init() {
@@ -150,6 +175,27 @@
             $("thRad").addEventListener("input", function () { set("rad", Number(this.value)); });
             $("thFs").addEventListener("input", function () { set("fs", Number(this.value)); });
             $("thCompact").addEventListener("change", function () { set("compact", this.checked); });
+            Array.prototype.forEach.call(document.querySelectorAll("#thBgMode button"), function (b) {
+                b.onclick = function () {
+                    var m = b.getAttribute("data-m");
+                    if (m === "image" && !st.bgImg) { st.bg = "image"; save(); sync(); $("thBgPick").click(); return; }
+                    set("bg", m);
+                };
+            });
+            BG_SW.forEach(function (c) {
+                var b = document.createElement("button"); b.style.background = c; b.title = c;
+                b.onclick = function () { st.bg1 = c; if (st.bg !== "grad") st.bg = "color"; save(); apply(); sync(); };
+                $("thBgSw").appendChild(b);
+            });
+            $("thBg1").addEventListener("input", function () { var v = this.value.trim(); if (hexRgb(v)) set("bg1", v.charAt(0) === "#" ? v : "#" + v); });
+            $("thBg2").addEventListener("input", function () { var v = this.value.trim(); if (hexRgb(v)) set("bg2", v.charAt(0) === "#" ? v : "#" + v); });
+            $("thBgDim").addEventListener("input", function () { set("bgDim", Number(this.value)); });
+            $("thBgPick").onclick = function () {
+                host("bgPickImage").then(function (r) {
+                    if (r && r.ok && r.data) { st.bgImg = r.data; st.bg = "image"; save(); apply(); sync(); }
+                    else if (!st.bgImg) { st.bg = "theme"; save(); apply(); sync(); }
+                });
+            };
             $("thReset").onclick = function () { st = JSON.parse(JSON.stringify(DEF)); save(); apply(); sync(); };
             var pop = $("themePop");
             $("btnTheme").onclick = function (e) { e.stopPropagation(); pop.classList.toggle("hidden"); sync(); };
