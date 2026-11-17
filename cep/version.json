@@ -1,5 +1,5 @@
 {
-  "version": "3.4.1",
+  "version": "3.4.2",
   "files": [
     "index.html",
     "css/style.css",
@@ -10,6 +10,7 @@
   ],
   "notes": [
     "Lumière moins forte : elle passe maintenant sur les CONTOURS des boutons, de gauche à droite ou en diagonale",
-    "Thème > Animations : choisis Contours, Faisceau ou Les deux, la direction, l'intensité et la vitesse"
+    "Thème > Animations : choisis Contours, Faisceau ou Les deux, la direction, l'intensité et la vitesse",
+    "Mises à jour plus fiables"
   ]
 }
