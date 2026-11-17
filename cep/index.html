@@ -6,6 +6,8 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <div class="fx-blobs" aria-hidden="true"><i></i><i></i></div>
+  <div class="fx-sweep" aria-hidden="true"></div>
   <header class="top">
     <div class="brand"><span>AuraScript</span> <span id="version" class="muted">v3.0.0</span></div>
     <div class="upd"><span id="update" class="muted"></span><button id="btnUpdate" class="btn small hidden">Mettre à jour</button><button id="btnTheme" class="btn theme-btn" title="Thème et personnalisation"><svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M8 1.2a6.8 6.8 0 1 0 0 13.6c1 0 1.5-.6 1.5-1.3 0-.4-.2-.7-.4-1-.2-.2-.3-.5-.3-.8 0-.7.6-1.3 1.3-1.3h1.6A3.2 3.2 0 0 0 14.8 7 6.6 6.6 0 0 0 8 1.2ZM4.3 8.4a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Zm2-3a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Zm3.4 0a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Zm2 3a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Z"/></svg></button></div>
@@ -19,6 +21,12 @@
     <div class="th-row"><label>Arrondis</label><input type="range" id="thRad" min="0" max="14" step="1"><span class="val" id="thRadV"></span></div>
     <div class="th-row"><label>Texte</label><input type="range" id="thFs" min="10" max="13" step="0.5"><span class="val" id="thFsV"></span></div>
     <label class="th-check"><input type="checkbox" id="thCompact"> Mode compact (boutons plus petits)</label>
+    <h4>Animations</h4>
+    <label class="th-check"><input type="checkbox" id="thAnim"> Lumière et couleurs animées</label>
+    <div class="th-seg th-seg3" id="thAnimDir">
+      <button data-m="lr">Horizontale</button><button data-m="diag">Diagonale</button><button data-m="both">Les deux</button>
+    </div>
+    <div class="th-row"><label>Vitesse</label><input type="range" id="thAnimSpd" min="1" max="5" step="1"><span class="val" id="thAnimSpdV"></span></div>
     <h4>Fond</h4>
     <div class="th-seg" id="thBgMode">
       <button data-m="theme">Thème</button><button data-m="color">Couleur</button><button data-m="grad">Dégradé</button><button data-m="image">Image</button>
