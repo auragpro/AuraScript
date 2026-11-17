@@ -1,5 +1,5 @@
 {
-  "version": "3.0.8",
+  "version": "3.0.9",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,6 +9,6 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "OUTILS : bouton « Coller l'image » — copie une image (Google, Pinterest : clic droit > Copier l'image), un lien d'image ou un fichier, puis clique : elle arrive à la tête de lecture, transparence gardée"
+    "« Coller image / lien TikTok » : copie un lien TikTok (Partager > Copier le lien) puis clique, la vidéo arrive dans la timeline à la tête de lecture"
   ]
 }
