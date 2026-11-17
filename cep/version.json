@@ -1,5 +1,5 @@
 {
-  "version": "3.4.4",
+  "version": "3.4.5",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,6 +9,6 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "Nouveaux boutons « Ajuster à la compo » et « Remplir la compo » (onglet Outils › Modifier) : redimensionne la vidéo/image sélectionnée à la taille du projet (ex : 2560×1440 → 1920×1080), centrée"
+    "« Extraire l'audio » : son en MP3 320 kb/s ; pour les vidéos TikTok, le son original est récupéré en meilleure qualité"
   ]
 }
