@@ -1,7 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.6.8
-// nouveautes: INTRO : le choix du preset .ffx est maintenant à côté de la taille, sous les lyrics
-// nouveautes: Choisis « Aucun preset » pour créer les paroles sans preset
+// version: 1.6.9
+// nouveautes: COURBE : option « Caler la clé du milieu (3 clés) » retirée
+// nouveautes: COURBE : boutons Normal, Reverse et Aller-retour retirés (la courbe s'applique telle que tu la dessines)
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -1517,19 +1517,6 @@
         // ---------- Appliquer ----------
         var sApp = addSection(page, "APPLIQUER");
         sApp.spacing = 4;
-        var gMode = sApp.add("group");
-        gMode.orientation = "row";
-        gMode.spacing = 4;
-        var btnMNormal = addToggle(gMode, "Normal", function () { return st.mode === "normal"; }, 86);
-        btnMNormal.helpTip = "La courbe telle que tu l'as dessinée";
-        var btnMReverse = addToggle(gMode, "Reverse", function () { return st.mode === "reverse"; }, 86);
-        btnMReverse.helpTip = "La même courbe jouée à l'envers (ease-out devient ease-in)";
-        var btnMAlt = addToggle(gMode, "Aller-retour", function () { return st.mode === "alternate"; }, 86);
-        btnMAlt.helpTip = "Alterne Normal / Reverse à chaque transition : pratique avec plusieurs reverses";
-        var chkMid = sApp.add("checkbox", undefined, "Caler la clé du milieu (3 clés)");
-        chkMid.value = false;
-        chkMid.helpTip = "Déplace la keyframe du milieu au même endroit que sur la courbe";
-        paintText(chkMid, THEME.label);
         var btnApplyCurve = themeButton(sApp.add("button", undefined, "Appliquer aux keyframes sélectionnées"), "primary");
         btnApplyCurve.preferredSize.height = 28;
 
@@ -1552,7 +1539,6 @@
             refreshEditorFields();
             softRepaint();
             repaint(btnK2); repaint(btnK3);
-            repaint(btnMNormal); repaint(btnMReverse); repaint(btnMAlt);
         }
 
         // Remplit la grille de vignettes (= la bibliothèque)
@@ -1643,9 +1629,6 @@
 
         btnK2.onClick = function () { setKeys(2); };
         btnK3.onClick = function () { setKeys(3); };
-        btnMNormal.onClick = function () { setMode("normal"); };
-        btnMReverse.onClick = function () { setMode("reverse"); };
-        btnMAlt.onClick = function () { setMode("alternate"); };
 
         btnNew.onClick = function () {
             st.curve = defaultCurve();
@@ -1709,14 +1692,11 @@
             if (!comp) { alert("Ouvre d'abord une composition."); return; }
             app.beginUndoGroup("Courbe : " + (st.curve.name || "sans nom"));
             try {
-                var res = applyCurveToSelection(comp, st.curve, st.mode, chkMid.value);
+                var res = applyCurveToSelection(comp, st.curve, "normal", false);
                 if (!res.segs) {
                     alert("Sélectionne au moins 2 keyframes sur une propriété (dans la timeline).");
                 } else {
-                    var modeName = "Normal";
-                    if (st.mode === "reverse") modeName = "Reverse";
-                    if (st.mode === "alternate") modeName = "Aller-retour";
-                    setStatus("Courbe appliquée (" + modeName + ") : " + res.segs + " transition(s) sur " + res.props + " propriété(s).");
+                    setStatus("Courbe appliquée : " + res.segs + " transition(s) sur " + res.props + " propriété(s).");
                 }
             } catch (e) {
                 alert("Erreur : " + e.message);
