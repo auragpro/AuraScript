@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.1.8";
+    var VERSION = "3.2.0";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -86,6 +86,78 @@
             inp.onkeydown = function (e) { if (e.key === "Enter") done(inp.value); if (e.key === "Escape") done(null); };
         });
     }
+
+    // =====================================================================
+    // Thème personnalisable (en haut à droite)
+    // =====================================================================
+
+    var Theme = (function () {
+        var THEMES = [
+            { id: "aura", name: "Aura", acc: [184, 176, 255], acc2: "#8fd3ff", tint: "#23203a" },
+            { id: "neon", name: "Néon", acc: [80, 200, 255], acc2: "#7cffd4", tint: "#10263a" },
+            { id: "sakura", name: "Sakura", acc: [255, 140, 200], acc2: "#ffc2ea", tint: "#3a1a2e" },
+            { id: "emerald", name: "Émeraude", acc: [80, 230, 160], acc2: "#c4ff7a", tint: "#12301f" },
+            { id: "inferno", name: "Inferno", acc: [255, 128, 64], acc2: "#ffd166", tint: "#3a1d12" },
+            { id: "ruby", name: "Rubis", acc: [255, 72, 96], acc2: "#ff9a8b", tint: "#3a1218" },
+            { id: "gold", name: "Or", acc: [255, 202, 96], acc2: "#fff1b8", tint: "#33270f" },
+            { id: "ice", name: "Glace", acc: [228, 232, 245], acc2: "#ffffff", tint: "#24252e" }
+        ];
+        var DEF = { id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false };
+        var st = {};
+        function load() { try { st = JSON.parse(localStorage.getItem("aura.theme") || "{}"); } catch (e) { st = {}; } for (var k in DEF) if (st[k] === undefined) st[k] = DEF[k]; }
+        function save() { try { localStorage.setItem("aura.theme", JSON.stringify(st)); } catch (e) {} }
+        function hexRgb(h) { var m = /^#?([0-9a-f]{6})$/i.exec(String(h || "").trim()); if (!m) return null; var n = parseInt(m[1], 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+        function mix(a, b, t) { return a.map(function (v, i) { return Math.round(v + (b[i] - v) * t); }); }
+        function toHex(c) { return "#" + c.map(function (x) { return ("0" + x.toString(16)).slice(-2); }).join(""); }
+        function current() {
+            var rgb = hexRgb(st.hex);
+            if (rgb) return { acc: rgb, acc2: toHex(mix(rgb, [255, 255, 255], 0.45)), tint: toHex(mix([15, 14, 18], rgb, 0.18)) };
+            for (var i = 0; i < THEMES.length; i++) if (THEMES[i].id === st.id) return THEMES[i];
+            return THEMES[0];
+        }
+        function apply() {
+            var t = current(), r = document.documentElement.style, gk = st.glow / 100;
+            r.setProperty("--acc-rgb", t.acc.join(", "));
+            r.setProperty("--acc2", t.acc2);
+            r.setProperty("--tint", t.tint);
+            r.setProperty("--gk", String(gk));
+            r.setProperty("--rad", st.rad + "px");
+            r.setProperty("--fs", st.fs + "px");
+            document.body.classList.toggle("compact", !!st.compact);
+            window.__glowColor = gk > 0 ? "rgba(" + t.acc.join(",") + "," + Math.min(1, 0.75 * gk) + ")" : null;
+            try { requestAnimationFrame(function () { drawEditor(); drawThumbs(); }); } catch (e) {}
+        }
+        function sync() {
+            Array.prototype.forEach.call(document.querySelectorAll(".th-sw"), function (b) { b.classList.toggle("on", !st.hex && b.getAttribute("data-id") === st.id); });
+            $("thHex").value = st.hex || "";
+            $("thGlow").value = st.glow; $("thGlowV").textContent = st.glow + "%";
+            $("thRad").value = st.rad; $("thRadV").textContent = st.rad + "px";
+            $("thFs").value = st.fs; $("thFsV").textContent = st.fs + "px";
+            $("thCompact").checked = !!st.compact;
+        }
+        function set(k, v) { st[k] = v; save(); apply(); sync(); }
+        function init() {
+            load(); apply();
+            THEMES.forEach(function (t) {
+                var b = document.createElement("button");
+                b.className = "th-sw"; b.setAttribute("data-id", t.id); b.title = t.name; b.textContent = t.name;
+                b.style.background = "linear-gradient(135deg, " + t.tint + " 0%, rgb(" + t.acc.join(",") + ") 70%, " + t.acc2 + " 100%)";
+                b.onclick = function () { st.hex = ""; set("id", t.id); };
+                $("thGrid").appendChild(b);
+            });
+            $("thHex").addEventListener("input", function () { var v = this.value.trim(); if (!v) { set("hex", ""); return; } if (hexRgb(v)) set("hex", v.charAt(0) === "#" ? v : "#" + v); });
+            $("thGlow").addEventListener("input", function () { set("glow", Number(this.value)); });
+            $("thRad").addEventListener("input", function () { set("rad", Number(this.value)); });
+            $("thFs").addEventListener("input", function () { set("fs", Number(this.value)); });
+            $("thCompact").addEventListener("change", function () { set("compact", this.checked); });
+            $("thReset").onclick = function () { st = JSON.parse(JSON.stringify(DEF)); save(); apply(); sync(); };
+            var pop = $("themePop");
+            $("btnTheme").onclick = function (e) { e.stopPropagation(); pop.classList.toggle("hidden"); sync(); };
+            document.addEventListener("pointerdown", function (e) { if (!pop.classList.contains("hidden") && !pop.contains(e.target) && !$("btnTheme").contains(e.target)) pop.classList.add("hidden"); });
+            sync();
+        }
+        return { init: init };
+    })();
 
     // =====================================================================
     // Onglets
@@ -642,7 +714,7 @@
             }
         }
         g.strokeStyle = color; g.lineWidth = width; g.lineJoin = "round";
-        if (width >= 2) { g.shadowColor = "rgba(184,176,255,.75)"; g.shadowBlur = 10; }
+        if (width >= 2 && window.__glowColor) { g.shadowColor = window.__glowColor; g.shadowBlur = 10; }
         g.beginPath();
         for (var s2 = 0; s2 < c.segs.length; s2++) {
             var hh = segHandles(c, s2);
@@ -1162,6 +1234,7 @@
     // Démarrage
     // =====================================================================
 
+    Theme.init();
     loadHost().then(function () {
         refreshPresets();
         loadLib();
