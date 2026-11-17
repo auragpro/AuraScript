@@ -1,0 +1,5 @@
+{
+  "version": "3.0.1",
+  "files": ["index.html", "css/style.css", "js/main.js", "js/lyrics-core.js", "host/host.jsx", "CSXS/manifest.xml"],
+  "notes": ["Nouveau panneau AuraScript 3 : défilement à la molette", "Correction de l'alignement (boutons +)", "Accents corrigés dans les messages"]
+}
