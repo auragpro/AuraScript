@@ -1,5 +1,5 @@
 {
-  "version": "3.1.0",
+  "version": "3.1.1",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,7 +9,7 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "OUTILS : case séparée pour coller un lien TikTok + bouton Entrée (ou touche Entrée)",
-    "« Coller l'image » ne sert plus qu'aux images"
+    "Nouvel onglet PRESETS : ajoute un dossier de presets .ffx (« + Dossier »), clique sur un preset pour l'appliquer",
+    "Calque sélectionné : appliqué dessus. Rien de sélectionné : calque d'effet créé à la bonne taille"
   ]
 }
