@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.3.0";
+    var VERSION = "3.3.1";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -253,6 +253,7 @@
         $("scroller").scrollTop = 0;
         try { localStorage.setItem("aura.page", p); } catch (e) {}
         if (p === "curve") requestAnimationFrame(function () { drawEditor(); drawThumbs(); });
+        if (p === "presets") setTimeout(function () { try { $("fxSearch").focus(); } catch (e) {} }, 50);
     }
     for (var ti = 0; ti < tabs.length; ti++) tabs[ti].addEventListener("click", function () { showPage(this.getAttribute("data-page")); });
 
@@ -511,9 +512,10 @@
         }
         function render() {
             var box = $("fxList"), q = $("fxSearch").value.trim().toLowerCase();
+            $("fxClear").classList.toggle("hidden", !q);
             box.innerHTML = "";
             if (!lib.items.length) {
-                box.innerHTML = '<div class="fx-empty">Aucun preset pour l\'instant.<br>Clique sur « + Dossier » pour ajouter un dossier de presets .ffx (chaque sous-dossier devient une catégorie), ou sur « + Presets » pour choisir des fichiers.</div>';
+                box.innerHTML = '<div class="fx-empty">Aucun preset pour l\'instant.<br>Clique sur « Ajouter dossier » pour ajouter un dossier de presets .ffx (chaque sous-dossier devient une catégorie), ou sur « Ajouter presets » pour choisir des fichiers.</div>';
                 return;
             }
             var cats = {}, order = [];
@@ -524,7 +526,9 @@
                 cats[c].push(i);
             });
             order.sort(function (a, b) { return a.localeCompare(b); });
-            if (!order.length) { box.innerHTML = '<div class="fx-empty">Aucun preset ne correspond.</div>'; return; }
+            var found = 0; order.forEach(function (c) { found += cats[c].length; });
+            $("fxCount").textContent = q ? found + " / " + lib.items.length : lib.items.length + " presets";
+            if (!order.length) { box.innerHTML = '<div class="fx-empty">Aucun preset ne correspond à « ' + q.replace(/[<>&"]/g, "") + ' ».</div>'; return; }
             order.forEach(function (c) {
                 var isClosed = !q && closed[c];
                 var head = document.createElement("div"); head.className = "fx-cat-head";
@@ -546,7 +550,14 @@
                 cats[c].sort(function (a, b) { return lib.items[a].name.localeCompare(lib.items[b].name); }).forEach(function (i) {
                     var it = lib.items[i];
                     var b = document.createElement("button"); b.className = "btn fx-item" + (delMode && picked[it.path] ? " picked" : ""); b.title = it.name + "\n" + it.path;
-                    b.textContent = it.name;
+                    var pos = q ? it.name.toLowerCase().indexOf(q) : -1;
+                    var nm = document.createElement("span"); nm.className = "nm";
+                    if (pos >= 0) {
+                        nm.appendChild(document.createTextNode(it.name.slice(0, pos)));
+                        var mk = document.createElement("mark"); mk.textContent = it.name.slice(pos, pos + q.length); nm.appendChild(mk);
+                        nm.appendChild(document.createTextNode(it.name.slice(pos + q.length)));
+                    } else nm.textContent = it.name;
+                    b.appendChild(nm);
                     b.addEventListener("click", function () {
                         if (delMode) {
                             if (picked[it.path]) delete picked[it.path]; else picked[it.path] = true;
@@ -581,6 +592,11 @@
             if (!fs) { $("fxList").innerHTML = '<div class="fx-empty">Cet onglet a besoin de Node.js.</div>'; return; }
             load(); render();
             $("fxSearch").addEventListener("input", render);
+            $("fxSearch").addEventListener("keydown", function (e) {
+                if (e.key === "Escape") { this.value = ""; render(); }
+                if (e.key === "Enter") { var first = document.querySelector("#fxList .fx-item"); if (first && !delMode) first.click(); }
+            });
+            $("fxClear").onclick = function () { $("fxSearch").value = ""; render(); $("fxSearch").focus(); };
             $("btnFxTrash").onclick = function () { setDelMode(!delMode); };
             $("btnFxDelCancel").onclick = function () { setDelMode(false); };
             $("btnFxDelOk").onclick = function () {
