@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.4.9
+// version: 3.5.0
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1665,6 +1665,79 @@
                 var m = (created ? created + " texte(s) cr\u00e9\u00e9(s)" : texts.length + " texte(s) mis \u00e0 jour") +
                     " : biseautage et estampage (taille " + size + ") + mode Incrustation.";
                 if (okB < texts.length || okG < texts.length) m += " Certains r\u00e9glages n'ont pas pu \u00eatre appliqu\u00e9s.";
+                return ok(m);
+            });
+        } catch (e) { return fail("Erreur : " + e.message); }
+    };
+
+    // ---------- EDGE DETECT TEXT ----------
+    // video selectionnee -> copie avec l'effet Contours (Find Edges) -> visible seulement a travers un texte (cache)
+    var EDGE_MATTES = { alpha: "ALPHA", alphaInv: "ALPHA_INVERTED", luma: "LUMA", lumaInv: "LUMA_INVERTED" };
+    function edgeMakeText(comp, txt, widthPct, above) {
+        var T = comp.layers.addText(txt);
+        var prop = getTextDocProp(T), td = prop.value;
+        td.justification = ParagraphJustification.CENTER_JUSTIFY;
+        td.applyFill = true; td.fillColor = [1, 1, 1];
+        try { td.applyStroke = false; } catch (e0) {}
+        td.fontSize = 100;
+        prop.setValue(td);
+        var r = T.sourceRectAtTime(above.inPoint, false);
+        if (r.width > 0 && r.height > 0) {
+            var k = Math.min(comp.width * widthPct / r.width, comp.height * 0.7 / r.height);
+            td = prop.value; td.fontSize = Math.max(4, Math.min(1296, Math.round(100 * k))); prop.setValue(td);
+        }
+        T.inPoint = above.inPoint; T.outPoint = above.outPoint;
+        centerTextLayer(T, comp);
+        return T;
+    }
+    API.edgeText = function (optsJson) {
+        try {
+            var comp = needComp();
+            var o = arg(optsJson) || {};
+            var txt = String(o.text || "").replace(/^\s+|\s+$/g, "");
+            if (!txt) return fail("Choisis d'abord un texte pour ce preset.");
+            var mt = TrackMatteType[EDGE_MATTES[o.matte] || "ALPHA"];
+            var widthPct = Math.max(0.2, Math.min(1, (parseFloat(o.width) || 80) / 100));
+            var blend = Math.max(0, Math.min(100, parseFloat(o.blend) || 0));
+            var ffx = o.ffx ? new File(String(o.ffx)) : null;
+            if (ffx && !ffx.exists) ffx = null;
+            var sel = comp.selectedLayers, vids = [], i;
+            for (i = 0; i < sel.length; i++) {
+                var L = sel[i];
+                if (L instanceof AVLayer && L.source && L.hasVideo && !(L instanceof TextLayer)) vids.push(L);
+            }
+            if (!vids.length) return fail("S\u00e9lectionne d'abord la vid\u00e9o dans la timeline, puis clique sur le preset.");
+            var t = comp.time, noFind = false;
+            return undoable("Edge Detect Text", function () {
+                var made = [];
+                for (i = 0; i < vids.length; i++) {
+                    var V = vids[i];
+                    var E = V.duplicate();
+                    try { E.name = "EDGE \u2022 " + txt; } catch (eN) {}
+                    try { if (E.hasAudio) E.audioEnabled = false; } catch (eA) {}
+                    var fx = null;
+                    try { fx = E.property("ADBE Effect Parade").addProperty("ADBE Find Edges"); } catch (eF) { noFind = true; }
+                    if (fx) {
+                        try { fx.property("ADBE Find Edges-0001").setValue(o.invert ? 1 : 0); } catch (e1) {}
+                        try { fx.property("ADBE Find Edges-0002").setValue(blend); } catch (e2) {}
+                    }
+                    if (ffx) { deselectAll(comp); E.selected = true; comp.time = t; try { E.applyPreset(ffx); } catch (eP) {} }
+                    var T = edgeMakeText(comp, txt, widthPct, E);
+                    try { T.name = "TEXTE \u2022 " + txt; } catch (eT) {}
+                    T.moveBefore(E);
+                    if (typeof E.setTrackMatte === "function") {
+                        E.setTrackMatte(T, mt);
+                    } else {
+                        E.trackMatteType = mt;
+                    }
+                    try { T.enabled = false; } catch (eV) {}
+                    made.push(T); made.push(E);
+                }
+                comp.time = t;
+                deselectAll(comp);
+                for (i = 0; i < made.length; i++) made[i].selected = true;
+                var m = "\u00ab " + (o.name || "Edge") + " \u00bb appliqu\u00e9 : texte \u00ab " + txt + " \u00bb + cache sur " + vids.length + " vid\u00e9o(s).";
+                if (noFind) m += " (Effet Contours introuvable : seul le cache a \u00e9t\u00e9 appliqu\u00e9.)";
                 return ok(m);
             });
         } catch (e) { return fail("Erreur : " + e.message); }
