@@ -1,5 +1,5 @@
 {
-  "version": "3.0.4",
+  "version": "3.0.5",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,6 +9,8 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "Courbe : maintiens Shift en glissant une poignée pour la garder droite sur sa ligne (comme Flow)"
+    "OUTILS : bouton Inverser (clés sélectionnées, ou ordre des calques)",
+    "OUTILS : bouton Dupliquer",
+    "OUTILS : bouton Solide avec choix de la couleur"
   ]
 }
