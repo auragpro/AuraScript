@@ -1,7 +1,7 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.6.9
-// nouveautes: COURBE : option « Caler la clé du milieu (3 clés) » retirée
-// nouveautes: COURBE : boutons Normal, Reverse et Aller-retour retirés (la courbe s'applique telle que tu la dessines)
+// version: 1.7.0
+// nouveautes: COURBE : bouton Appliquer juste sous la courbe, avec deux petits boutons Reset et Enregistrer à côté
+// nouveautes: COURBE : catégorie Appliquer, options Normal / Reverse / Aller-retour et « Caler la clé du milieu » retirées
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -1490,6 +1490,24 @@
         canvas.helpTip = "Fais glisser les poignées (petits carrés) et, en mode 3 clés, les clés blanches";
         try { canvas.onDraw = function () { drawEditor(this, st); }; } catch (e) {}
 
+        // Sous la courbe : Appliquer + deux petits boutons
+        var gEdBtns = page.add("group");
+        gEdBtns.orientation = "row";
+        gEdBtns.alignChildren = ["fill", "center"];
+        gEdBtns.spacing = 4;
+        var btnApplyCurve = themeButton(gEdBtns.add("button", undefined, "Appliquer"), "primary");
+        btnApplyCurve.alignment = ["fill", "center"];
+        btnApplyCurve.preferredSize = [140, 26];
+        btnApplyCurve.helpTip = "Applique la courbe aux keyframes sélectionnées dans la timeline";
+        var btnReset = themeButton(gEdBtns.add("button", undefined, "Reset"));
+        btnReset.alignment = ["right", "center"];
+        btnReset.preferredSize = [54, 22];
+        btnReset.helpTip = "Remettre la courbe par défaut";
+        var btnSave = themeButton(gEdBtns.add("button", undefined, "Enregistrer"));
+        btnSave.alignment = ["right", "center"];
+        btnSave.preferredSize = [76, 22];
+        btnSave.helpTip = "Enregistre la courbe dans ta bibliothèque";
+
         var gSeg1 = page.add("group");
         gSeg1.orientation = "row";
         gSeg1.alignChildren = ["left", "center"];
@@ -1504,21 +1522,6 @@
         var etSeg2 = gSeg1.add("edittext", undefined, "");
         etSeg2.preferredSize.width = 122;
         etSeg2.helpTip = "Transition 2 (courbes à 3 clés) : x1, y1, x2, y2";
-
-        var gEdBtns = page.add("group");
-        gEdBtns.orientation = "row";
-        gEdBtns.spacing = 4;
-        var btnReset = themeButton(gEdBtns.add("button", undefined, "Réinitialiser"));
-        btnReset.preferredSize = [136, 24];
-        var btnSave = themeButton(gEdBtns.add("button", undefined, "Enregistrer"), "primary");
-        btnSave.preferredSize = [136, 24];
-        btnSave.helpTip = "Enregistre la courbe dans ta bibliothèque";
-
-        // ---------- Appliquer ----------
-        var sApp = addSection(page, "APPLIQUER");
-        sApp.spacing = 4;
-        var btnApplyCurve = themeButton(sApp.add("button", undefined, "Appliquer aux keyframes sélectionnées"), "primary");
-        btnApplyCurve.preferredSize.height = 28;
 
         // ---------- Logique ----------
 
