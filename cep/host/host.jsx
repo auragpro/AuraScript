@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.1.2
+// version: 3.1.3
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1511,6 +1511,41 @@
                 deselectAll(comp);
                 for (i = 0; i < made.length; i++) made[i].selected = true;
                 return ok(made.length + " audio(s) extrait(s).");
+            });
+        } catch (e) { return fail("Erreur : " + e.message); }
+    };
+
+    // ---------- Accelerer x2 / Ralentir x2 ----------
+    // change la vitesse des calques selectionnes en gardant leur debut au meme endroit dans la timeline
+    API.speed = function (factor) {
+        try {
+            var comp = needComp();
+            var sel = comp.selectedLayers, src = [], i;
+            for (i = 0; i < sel.length; i++) src.push(sel[i]);
+            if (!src.length) return fail("S\u00e9lectionne d'abord un ou plusieurs calques.");
+            factor = Number(factor);
+            if (!(factor > 0)) return fail("Vitesse invalide.");
+            var label = factor > 1 ? "Acc\u00e9l\u00e9rer x" + factor : "Ralentir x" + Math.round(1 / factor);
+            return undoable(label, function () {
+                var done = 0, skipped = 0;
+                for (i = 0; i < src.length; i++) {
+                    var L = src[i];
+                    try {
+                        if (L.locked) { skipped++; continue; }
+                        var oldS = L.stretch, newS = oldS / factor;
+                        if (Math.abs(newS) > 9900 || Math.abs(newS) < 1) { skipped++; continue; }
+                        var inP = L.inPoint, outP = L.outPoint;
+                        var srcIn = (inP - L.startTime) / (oldS / 100);
+                        L.stretch = newS;
+                        L.startTime = inP - srcIn * (newS / 100);
+                        L.inPoint = inP;
+                        L.outPoint = inP + (outP - inP) / factor;
+                        done++;
+                    } catch (e1) { skipped++; }
+                }
+                var m = done + " calque(s) " + (factor > 1 ? "acc\u00e9l\u00e9r\u00e9(s) x" + factor : "ralenti(s) x" + Math.round(1 / factor)) + ".";
+                if (skipped) m += " " + skipped + " ignor\u00e9(s) (verrouill\u00e9 ou limite de vitesse).";
+                return ok(m);
             });
         } catch (e) { return fail("Erreur : " + e.message); }
     };
