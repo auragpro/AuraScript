@@ -1,7 +1,6 @@
 ﻿// AURASCRIPT-APP  (ne pas supprimer : permet au lanceur de reconnaître ce fichier)
-// version: 1.9.0
-// nouveautes: Paroles calées sur le signal audio : chaque mot est placé sur le démarrage réel de la voix dans le son
-// nouveautes: Nouvel outil d'analyse du son (ffmpeg, ~80 Mo, téléchargé une seule fois)
+// version: 1.9.1
+// nouveautes: Détection des paroles allégée : petit modèle IA uniquement, fichiers inutiles supprimés (≈ 355 Mo au lieu de ≈ 960 Mo)
 //
 // AuraScript — code principal de l'outil, chargé par le lanceur AuraScript.jsx.
 
@@ -951,6 +950,47 @@
             words[i].t = v2;
         }
         return snapped;
+    }
+
+    // ---------- Nettoyage : on ne garde que le strict nécessaire ----------
+    function removeTree(item) {
+        try {
+            if (item instanceof Folder) {
+                var kids = item.getFiles();
+                for (var i = 0; i < kids.length; i++) removeTree(kids[i]);
+            }
+            item.remove();
+        } catch (e) {}
+    }
+
+    function cleanupWhisper() {
+        var freed = 0;
+        function rm(f) {
+            try { if (f && f.exists) { if (f instanceof File) freed += f.length; removeTree(f); } } catch (e) {}
+        }
+        // gros modèle (l'utilisateur a choisi le petit modèle uniquement)
+        rm(whFile(WH.models.turbo.name));
+        rm(whFile("model.part"));
+        // moteur Whisper : seulement whisper-cli + ses DLL
+        var exe = findWhisperExe(new Folder(WH.dir.fsName + "/bin"), 0);
+        if (exe) {
+            var files = exe.parent.getFiles();
+            for (var i = 0; i < files.length; i++) {
+                if (!/^(whisper-cli\.exe|whisper\.dll|ggml[\w\-]*\.dll)$/i.test(files[i].name)) rm(files[i]);
+            }
+        }
+        // ffmpeg : seulement ffmpeg.exe + ses DLL
+        var ff = findFfmpegExe(new Folder(WH.dir.fsName + "/ffmpeg"), 0);
+        if (ff) {
+            rm(new File(ff.parent.fsName + "/ffplay.exe"));
+            rm(new File(ff.parent.fsName + "/ffprobe.exe"));
+            var root = ff.parent.parent;
+            var extra = ["doc", "include", "lib", "presets"];
+            for (var j = 0; j < extra.length; j++) rm(new Folder(root.fsName + "/" + extra[j]));
+        }
+        rm(whFile("ffmpeg.zip"));
+        rm(whFile("whisper-bin.zip"));
+        return freed;
     }
 
     function startWhisperJob(audioFile, lyricsHint, offMs, durMs, model) {
@@ -2813,7 +2853,7 @@
                 if (det.phase === "setup") {
                     var s = readSetupState(det.model);
                     if (s.state === "error") { detStop(); alert("Le téléchargement du moteur a échoué (" + s.msg + ").\nVérifie ta connexion internet puis réessaie."); return; }
-                    if (s.state === "done") { detStartJob(); return; }
+                    if (s.state === "done") { cleanupWhisper(); detStartJob(); return; }
                     if (s.state === "model") status.text = "Téléchargement du modèle IA : " + s.pct + " % (une seule fois)";
                     else if (s.state === "ffmpeg") status.text = "Téléchargement de l'outil d'analyse du son (une seule fois)...";
                     else status.text = "Téléchargement du moteur (une seule fois)...";
@@ -2862,30 +2902,25 @@
             det.hint = etLyrics.text;
             btnDetect.text = "Annuler l'analyse";
             var hasBin = whisperBinInstalled();
-            var turbo = WH.models.turbo, small = WH.models.small;
+            var small = WH.models.small;
+            var hasModel = modelInstalled(small);
             var hasFf = ffmpegInstalled();
-            if (hasBin && modelInstalled(turbo) && !hasFf) {
-                det.model = turbo;
-                if (confirm("Nouveau : AuraScript peut caler chaque mot sur le signal audio (le vrai démarrage de la voix), c'est beaucoup plus précis.\n\nTélécharger l'outil d'analyse du son (~80 Mo, une seule fois) ?\n\nNon = sans calage sur le signal pour cette fois.")) {
+            det.model = small;
+            if (hasBin && hasModel && hasFf) {
+                detStartJob();
+            } else if (hasBin && hasModel) {
+                if (confirm("AuraScript peut caler chaque mot sur le signal audio (le vrai démarrage de la voix), c'est beaucoup plus précis.\n\nTélécharger l'outil d'analyse du son (~80 Mo, une seule fois) ?\n\nNon = sans calage sur le signal pour cette fois.")) {
                     det.phase = "setup";
                     startWhisperSetup(false, null, true);
                     status.text = "Téléchargement de l'outil d'analyse du son (une seule fois)...";
                 } else {
                     detStartJob();
                 }
-            } else if (hasBin && modelInstalled(turbo)) {
-                det.model = turbo;
-                detStartJob();
-            } else if (hasBin && modelInstalled(small) &&
-                       !confirm("Nouveau modèle IA disponible : il reconnaît beaucoup mieux les paroles chantées et rappées.\n\nLe télécharger maintenant (" + turbo.label + ", une seule fois) ?\n\nNon = utiliser l'ancien modèle pour cette fois.")) {
-                det.model = small;
-                detStartJob();
             } else {
-                if (!(hasBin && modelInstalled(small)) && !confirm("Première utilisation : AuraScript va télécharger le moteur de reconnaissance des paroles et l'outil d'analyse du son (" + turbo.label + " + ~80 Mo, une seule fois).\n\nContinuer ?")) { detStop(); return; }
-                det.model = turbo;
+                if (!confirm("Première utilisation : AuraScript va télécharger le moteur de reconnaissance des paroles et l'outil d'analyse du son (environ 300 Mo, une seule fois).\n\nContinuer ?")) { detStop(); return; }
                 det.phase = "setup";
-                startWhisperSetup(!hasBin, turbo, !hasFf);
-                status.text = "Téléchargement du modèle IA (une seule fois)...";
+                startWhisperSetup(!hasBin, hasModel ? null : small, !hasFf);
+                status.text = "Téléchargement du moteur (une seule fois)...";
             }
             det.task = app.scheduleTask("try { $.global.__auraDetectPoll(); } catch (e) {}", 1000, true);
         };
@@ -2969,6 +3004,13 @@
         };
 
         loadPresets();
+        // allège le dossier de détection des paroles (fichiers inutiles, gros modèle)
+        try {
+            if (WH.dir.exists) {
+                var freedBytes = cleanupWhisper();
+                if (freedBytes > 1000000) status.text = "Espace libéré : " + Math.round(freedBytes / 1000000) + " Mo (détection des paroles allégée).";
+            }
+        } catch (eClean) {}
         refreshPresetList(-1);
 
         if (host) return win; // le lanceur s'occupe de la mise en page
