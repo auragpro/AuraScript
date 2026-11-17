@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.0.3";
+    var VERSION = "3.0.4";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -280,7 +280,8 @@
         return t;
     }
 
-    function dragTo(target, px, py, m) {
+    // shift : la poignée reste droite, sur la ligne horizontale de sa clé (comme Flow)
+    function dragTo(target, px, py, m, straight) {
         var X = m.ux(px), Y = clamp(m.uy(py), YMIN - 0.5, YMAX + 0.5);
         if (target.kind === "mid") { cur.mid[0] = clamp(X, 0.05, 0.95); cur.mid[1] = clamp(Y, -1, 2); fixThree(cur); return; }
         if (target.kind === "end") { cur.end = clamp(Y, -1, 2); fixThree(cur); return; }
@@ -289,7 +290,8 @@
         var dy = B[1] - A[1];
         var ny = clamp(Math.abs(dy) > 0.0001 ? (Y - A[1]) / dy : 0, -3, 4);
         var b = cur.segs[target.seg];
-        if (target.kind === "h1") { b[0] = round4(nx); b[1] = round4(ny); } else { b[2] = round4(nx); b[3] = round4(ny); }
+        if (target.kind === "h1") { b[0] = round4(nx); b[1] = straight ? 0 : round4(ny); }
+        else { b[2] = round4(nx); b[3] = straight ? 1 : round4(ny); }
     }
 
     // glisser les poignées : le pointeur est « capturé », la poignée se lâche toujours au relâchement
@@ -307,7 +309,7 @@
         cv.addEventListener("pointermove", function (e) {
             if (!drag) return;
             var l = local(e);
-            dragTo(drag, l[0], l[1], mapper(l[2], l[3], 14));
+            dragTo(drag, l[0], l[1], mapper(l[2], l[3], 14), e.shiftKey);
             if (!raf) raf = requestAnimationFrame(function () { raf = 0; drawEditor(); refreshFields(); });
         });
         function end(e) { if (!drag) return; drag = null; try { cv.releasePointerCapture(e.pointerId); } catch (x) {} drawEditor(); refreshFields(); }
