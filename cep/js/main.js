@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.0.7";
+    var VERSION = "3.0.8";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -127,6 +127,108 @@
     $("btnReverse").onclick = function () { host("reverse").then(function (r) { showResult(r); }); };
     $("btnDuplicate").onclick = function () { host("duplicate").then(function (r) { showResult(r); }); };
     $("btnSolid").onclick = function () { Picker.close(); host("solid", J(Picker.value())).then(function (r) { showResult(r); }); };
+
+    // ---------- coller une image depuis le presse-papiers ----------
+    var PasteImage = (function () {
+        var IMG_OK = /\.(png|jpe?g|gif|bmp|tiff?|psd|tga|exr|ai|eps|pdf|svg)$/i;
+        var IMG_ANY = /\.(png|jpe?g|gif|bmp|tiff?|psd|tga|exr|webp|avif|heic|ico|jfif)$/i;
+        function stamp() { var d = new Date(); function p(n) { return ("0" + n).slice(-2); } return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "_" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()); }
+        function imgDir() { var d = path.join(process.env.APPDATA || os.homedir(), "AuraScript", "images"); fs.mkdirSync(d, { recursive: true }); return d; }
+        function spawnText(exe, args) {
+            return new Promise(function (resolve) {
+                var out = "", err = "", p;
+                try { p = cp.spawn(exe, args, { windowsHide: true }); } catch (e) { resolve({ code: -1, out: "", err: String(e) }); return; }
+                p.stdout.on("data", function (d) { out += d.toString(); });
+                p.stderr.on("data", function (d) { err += d.toString(); });
+                p.on("error", function (e) { resolve({ code: -1, out: out, err: String(e) }); });
+                p.on("close", function (c) { resolve({ code: c, out: out, err: err }); });
+            });
+        }
+        // lit le presse-papiers Windows : image PNG (garde la transparence), fichier copié, image, ou texte (lien)
+        function readClipboard(outPng) {
+            var ps = [
+                "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing",
+                "$o = '" + outPng.replace(/'/g, "''") + "'",
+                "$d = [Windows.Forms.Clipboard]::GetDataObject()",
+                "if ($d -eq $null) { 'EMPTY'; exit }",
+                "if ($d.GetDataPresent('PNG')) { $s = $d.GetData('PNG'); $f = [IO.File]::Create($o); $s.Position = 0; $s.CopyTo($f); $f.Close(); 'PNG'; exit }",
+                "if ($d.GetDataPresent([Windows.Forms.DataFormats]::FileDrop)) { $l = $d.GetData([Windows.Forms.DataFormats]::FileDrop); [Console]::OutputEncoding = [Text.Encoding]::UTF8; 'FILE:' + $l[0]; exit }",
+                "$img = [Windows.Forms.Clipboard]::GetImage(); if ($img -ne $null) { $img.Save($o, [Drawing.Imaging.ImageFormat]::Png); 'DIB'; exit }",
+                "$t = [Windows.Forms.Clipboard]::GetText(); if ($t) { [Console]::OutputEncoding = [Text.Encoding]::UTF8; 'TEXT:' + $t.Trim(); exit }",
+                "'EMPTY'"
+            ].join("\n");
+            var enc = Buffer.from(ps, "utf16le").toString("base64");
+            return spawnText("powershell.exe", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-EncodedCommand", enc]).then(function (r) {
+                return String(r.out || "").trim().split(/\r?\n/).pop() || ("ERR:" + r.err);
+            });
+        }
+        function ffmpegPath() {
+            var base = path.join(process.env.APPDATA || os.homedir(), "AuraScript", "whisper", "ffmpeg");
+            function find(dir, depth) {
+                try {
+                    var items = fs.readdirSync(dir, { withFileTypes: true }), i;
+                    for (i = 0; i < items.length; i++) if (items[i].isFile() && /^ffmpeg\.exe$/i.test(items[i].name)) return path.join(dir, items[i].name);
+                    if (depth < 4) for (i = 0; i < items.length; i++) if (items[i].isDirectory()) { var r = find(path.join(dir, items[i].name), depth + 1); if (r) return r; }
+                } catch (e) {}
+                return null;
+            }
+            return find(base, 0);
+        }
+        // convertit en PNG les formats qu'After Effects n'ouvre pas (webp, avif...)
+        function ensureImportable(file) {
+            if (IMG_OK.test(file)) return Promise.resolve(file);
+            var ff = ffmpegPath();
+            if (!ff) return Promise.reject(new Error("Ce format d'image n'est pas lu par After Effects. Copie plutôt l'image elle-même (clic droit > Copier l'image)."));
+            var out = file.replace(/\.[^.\\\/]+$/, "") + ".png";
+            return spawnText(ff, ["-hide_banner", "-loglevel", "error", "-y", "-i", file, "-frames:v", "1", out]).then(function (r) {
+                if (r.code !== 0 || !fs.existsSync(out)) throw new Error("Conversion de l'image impossible.");
+                return out;
+            });
+        }
+        function download(url, base) {
+            var tmp = base + ".dl";
+            return spawnText("curl.exe", ["-s", "-L", "--fail", "-A", "Mozilla/5.0", "-o", tmp, "-w", "%{content_type}", url]).then(function (r) {
+                if (r.code !== 0 || !fs.existsSync(tmp)) throw new Error("Impossible de télécharger l'image depuis ce lien.");
+                var ct = String(r.out || "").toLowerCase(), ext = null;
+                var m = /image\/([a-z0-9.+-]+)/.exec(ct);
+                if (m) ext = { jpeg: "jpg", "svg+xml": "svg", "x-icon": "ico", "vnd.microsoft.icon": "ico" }[m[1]] || m[1];
+                if (!ext) { var u = /\.(png|jpe?g|gif|webp|avif|bmp|tiff?|svg)(\?|#|$)/i.exec(url); if (u) ext = u[1].toLowerCase(); }
+                if (!ext) { try { fs.unlinkSync(tmp); } catch (e) {} throw new Error("Ce lien ne mène pas à une image. Fais clic droit sur l'image > Copier l'image."); }
+                var dest = base + "." + ext;
+                fs.renameSync(tmp, dest);
+                return dest;
+            });
+        }
+        function run() {
+            if (!fs || !cp) { modal("Cette fonction a besoin de Node.js, qui n'est pas disponible dans ce panneau.", { cancel: false }); return; }
+            if (process.platform !== "win32") { modal("Coller une image fonctionne pour l'instant sur Windows.", { cancel: false }); return; }
+            var base = path.join(imgDir(), "image_" + stamp()), png = base + ".png";
+            status("Lecture du presse-papiers...");
+            readClipboard(png).then(function (res) {
+                if (res === "PNG" || res === "DIB") return png;
+                if (res.indexOf("FILE:") === 0) {
+                    var f = res.slice(5).trim();
+                    if (!IMG_ANY.test(f) && !IMG_OK.test(f)) throw new Error("Le fichier copié n'est pas une image.");
+                    return f;
+                }
+                if (res.indexOf("TEXT:") === 0) {
+                    var t = res.slice(5).trim();
+                    if (/^https?:\/\/\S+$/i.test(t)) { status("Téléchargement de l'image..."); return download(t, base); }
+                    if (/^[a-z]:\\.+/i.test(t) && fs.existsSync(t)) return t;
+                    throw new Error("Le presse-papiers contient du texte, pas une image.\n\nSur Google ou Pinterest : clic droit sur l'image > Copier l'image.");
+                }
+                if (res.indexOf("ERR:") === 0) throw new Error("Lecture du presse-papiers impossible.\n" + res.slice(4).slice(-300));
+                throw new Error("Aucune image dans le presse-papiers.\n\nSur Google ou Pinterest : clic droit sur l'image > Copier l'image, puis reclique ici.");
+            }).then(ensureImportable).then(function (file) {
+                return host("importImage", J(file)).then(function (r) { showResult(r); });
+            }).catch(function (e) {
+                status("");
+                modal(e && e.message ? e.message : String(e), { cancel: false });
+            });
+        }
+        return { run: run };
+    })();
+    $("btnPasteImg").onclick = function () { PasteImage.run(); };
 
     // ---------- sélecteur de couleur (thème sombre) ----------
     var Picker = (function () {
