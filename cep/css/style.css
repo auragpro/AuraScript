@@ -366,14 +366,14 @@ body.compact .card { gap: 4px; padding: 2px 7px 8px; }
    Animations légères : on n'anime QUE transform et opacity
    (calculés par la carte graphique, sans redessiner la page -> pas de lag)
    ===================================================================== */
-:root { --spd: 1; --acc2-rgb: 143, 211, 255; }
+:root { --spd: 1; --acc2-rgb: 143, 211, 255; --li: .5; }
 .top, .tabs, .status, .scroller, .banner { position: relative; z-index: 1; }
 
 /* halos de couleur qui dérivent lentement derrière l'interface */
 .fx-blobs { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
 .fx-blobs i { position: absolute; width: 90vmax; height: 90vmax; border-radius: 50%; will-change: transform; }
-.fx-blobs i:first-child { left: -45vmax; top: -55vmax; background: radial-gradient(circle, rgba(var(--acc-rgb), calc(.16 * var(--gk))) 0%, rgba(var(--acc-rgb), 0) 62%); animation: blobA calc(26s / var(--spd)) ease-in-out infinite alternate; }
-.fx-blobs i:last-child { right: -50vmax; bottom: -60vmax; background: radial-gradient(circle, rgba(var(--acc2-rgb), calc(.13 * var(--gk))) 0%, rgba(var(--acc2-rgb), 0) 62%); animation: blobB calc(32s / var(--spd)) ease-in-out infinite alternate; }
+.fx-blobs i:first-child { left: -45vmax; top: -55vmax; background: radial-gradient(circle, rgba(var(--acc-rgb), calc(.2 * var(--li))) 0%, rgba(var(--acc-rgb), 0) 62%); animation: blobA calc(26s / var(--spd)) ease-in-out infinite alternate; }
+.fx-blobs i:last-child { right: -50vmax; bottom: -60vmax; background: radial-gradient(circle, rgba(var(--acc2-rgb), calc(.16 * var(--li))) 0%, rgba(var(--acc2-rgb), 0) 62%); animation: blobB calc(32s / var(--spd)) ease-in-out infinite alternate; }
 @keyframes blobA { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(35vmax, 25vmax, 0); } }
 @keyframes blobB { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-30vmax, -35vmax, 0); } }
 
@@ -381,11 +381,11 @@ body.compact .card { gap: 4px; padding: 2px 7px 8px; }
 .fx-sweep { position: fixed; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
 .fx-sweep::before, .fx-sweep::after {
   content: ""; position: absolute; top: -50%; left: -50%; width: 60%; height: 200%;
-  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(var(--acc-rgb), calc(.09 * var(--gk))) 42%, rgba(255,255,255, calc(.08 * var(--gk))) 50%, rgba(var(--acc-rgb), calc(.09 * var(--gk))) 58%, rgba(255,255,255,0) 100%);
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(var(--acc-rgb), calc(.1 * var(--li))) 42%, rgba(255,255,255, calc(.08 * var(--li))) 50%, rgba(var(--acc-rgb), calc(.1 * var(--li))) 58%, rgba(255,255,255,0) 100%);
   will-change: transform; opacity: 0;
 }
-body.anim-lr .fx-sweep::before, body.anim-both .fx-sweep::before { opacity: 1; animation: sweepLR calc(7s / var(--spd)) linear infinite; }
-body.anim-diag .fx-sweep::after, body.anim-both .fx-sweep::after { opacity: 1; animation: sweepDiag calc(9s / var(--spd)) linear infinite; animation-delay: calc(-3s / var(--spd)); }
+body.beam.anim-lr .fx-sweep::before { opacity: 1; animation: sweepLR calc(7s / var(--spd)) linear infinite; }
+body.beam.anim-diag .fx-sweep::after { opacity: 1; animation: sweepDiag calc(9s / var(--spd)) linear infinite; animation-delay: calc(-3s / var(--spd)); }
 @keyframes sweepLR { 0% { transform: translate3d(-60%, 0, 0) rotate(0deg); } 70%, 100% { transform: translate3d(330%, 0, 0) rotate(0deg); } }
 @keyframes sweepDiag { 0% { transform: translate3d(-80%, -30%, 0) rotate(30deg); } 70%, 100% { transform: translate3d(320%, 30%, 0) rotate(30deg); } }
 
@@ -393,7 +393,7 @@ body.anim-diag .fx-sweep::after, body.anim-both .fx-sweep::after { opacity: 1; a
 .btn, .tab { position: relative; overflow: hidden; }
 .btn::after, .tab::after {
   content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 60%; pointer-events: none;
-  background: linear-gradient(105deg, rgba(255,255,255,0) 20%, rgba(255,255,255, calc(.16 * var(--gk))) 50%, rgba(255,255,255,0) 80%);
+  background: linear-gradient(105deg, rgba(255,255,255,0) 20%, rgba(255,255,255, calc(.22 * var(--li))) 50%, rgba(255,255,255,0) 80%);
   transform: translate3d(-130%, 0, 0);
 }
 body.anim-on .btn:hover::after { animation: shine .75s ease-out; }
@@ -409,6 +409,35 @@ body.anim-on .brand::before { animation: pulse calc(2.4s / var(--spd)) ease-in-o
 
 /* animations coupées */
 body:not(.anim-on) .fx-blobs i, body:not(.anim-on) .fx-sweep::before, body:not(.anim-on) .fx-sweep::after { animation: none !important; }
-body:not(.anim-on) .fx-sweep { display: none; }
+body:not(.anim-on) .fx-sweep, body:not(.beam) .fx-sweep { display: none; }
 .th-seg.th-seg3 button { font-size: calc(var(--fs) - 1.5px); }
 .th-row .val { width: auto; min-width: 30px; margin-right: 2px; }
+
+/* ---------- lumière qui passe sur les CONTOURS des boutons ----------
+   chaque bouton a un liseré lumineux ; le reflet y passe au moment où la
+   « vague » de lumière traverse le panneau (décalage selon la position du bouton) */
+.card { position: relative; }
+.btn::before, .tab::before, .card::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  background-repeat: no-repeat; opacity: 0;
+}
+body.anim-on.edge .btn::before, body.anim-on.edge .tab::before, body.anim-on.edge .card::before { opacity: 1; }
+body.anim-on.edge.anim-lr .btn::before, body.anim-on.edge.anim-lr .tab::before, body.anim-on.edge.anim-lr .card::before {
+  background-image: linear-gradient(90deg, rgba(0,0,0,0) 40%, rgba(var(--acc-rgb), var(--li)) 47%, rgba(255,255,255, calc(.9 * var(--li))) 50%, rgba(var(--acc-rgb), var(--li)) 53%, rgba(0,0,0,0) 60%);
+  background-size: 500% 100%; background-position: 100% 0;
+  animation: edgeLR calc(6s / var(--spd)) linear infinite;
+  animation-delay: calc((var(--lx, 0) * .5 - 1) * 6s / var(--spd));
+}
+body.anim-on.edge.anim-diag .btn::before, body.anim-on.edge.anim-diag .tab::before, body.anim-on.edge.anim-diag .card::before {
+  background-image: linear-gradient(135deg, rgba(0,0,0,0) 40%, rgba(var(--acc-rgb), var(--li)) 47%, rgba(255,255,255, calc(.9 * var(--li))) 50%, rgba(var(--acc-rgb), var(--li)) 53%, rgba(0,0,0,0) 60%);
+  background-size: 500% 500%; background-position: 100% 100%;
+  animation: edgeDiag calc(7s / var(--spd)) linear infinite;
+  animation-delay: calc((var(--ld, 0) * .5 - 1) * 7s / var(--spd));
+}
+@keyframes edgeLR { 0% { background-position: 100% 0; } 22%, 100% { background-position: 0% 0; } }
+@keyframes edgeDiag { 0% { background-position: 100% 100%; } 22%, 100% { background-position: 0% 0%; } }
+.card::before { padding: 1px; }
+.th-sub { color: #8f8ba6; font-size: calc(var(--fs) - 1px); margin-bottom: -4px; }
+.th-seg.th-seg2 { grid-template-columns: repeat(2, 1fr); }
