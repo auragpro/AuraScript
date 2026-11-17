@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.4.1";
+    var VERSION = "3.4.2";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -1309,7 +1309,30 @@
     }
 
     // lit un fichier en ligne : d'abord l'API GitHub (jamais en retard), sinon le lien direct
+    // lecture via Node (pas de limite de l'API GitHub, pas de cache) en suivant les redirections
+    function nodeGet(url, hops) {
+        return new Promise(function (resolve, reject) {
+            var https; try { https = nodeRequire("https"); } catch (e) { reject(e); return; }
+            var req = https.get(url, { headers: { "User-Agent": "AuraScript", "Cache-Control": "no-cache" } }, function (res) {
+                if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && (hops || 0) < 5) {
+                    res.resume(); resolve(nodeGet(new URL(res.headers.location, url).toString(), (hops || 0) + 1)); return;
+                }
+                if (res.statusCode !== 200) { res.resume(); reject(new Error("HTTP " + res.statusCode)); return; }
+                var chunks = [];
+                res.on("data", function (c) { chunks.push(c); });
+                res.on("end", function () { resolve(Buffer.concat(chunks).toString("utf8")); });
+            });
+            req.on("error", reject);
+            req.setTimeout(20000, function () { req.destroy(new Error("délai dépassé")); });
+        });
+    }
     function getRemote(f) {
+        if (nodeRequire) {
+            return nodeGet("https://github.com/auragpro/AuraScript/raw/refs/heads/main/cep/" + f + "?t=" + Date.now()).catch(function () { return getRemoteWeb(f); });
+        }
+        return getRemoteWeb(f);
+    }
+    function getRemoteWeb(f) {
         var t = "t=" + Date.now();
         return fetch(API + f + "?ref=main&" + t, { cache: "no-store", headers: { Accept: "application/vnd.github.raw" } })
             .then(function (r) { if (!r.ok) throw new Error("api " + r.status); return r.text(); })
