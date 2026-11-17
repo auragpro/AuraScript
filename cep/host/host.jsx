@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.5.1
+// version: 3.5.2
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1690,39 +1690,80 @@
         centerTextLayer(T, comp);
         return T;
     }
+    function edgeKey(L) { return (typeof L.id === "number") ? "i" + L.id : "x" + L.index; }
+    function edgeLayer(comp, key) {
+        if (!key) return null;
+        key = String(key); var n = parseInt(key.substring(1), 10), i;
+        if (key.charAt(0) === "x") return (n >= 1 && n <= comp.numLayers) ? comp.layer(n) : null;
+        for (i = 1; i <= comp.numLayers; i++) { try { if (comp.layer(i).id === n) return comp.layer(i); } catch (e) {} }
+        return null;
+    }
+    // liste des calques de la compo active (pour les listes "Video" et "Cache" du panneau)
+    API.edgeLayers = function () {
+        try {
+            var comp = app.project.activeItem;
+            if (!(comp instanceof CompItem)) return ok("", { comp: "", layers: [] });
+            var out = [], i;
+            for (i = 1; i <= comp.numLayers; i++) {
+                var L = comp.layer(i), kind = "other";
+                if (L instanceof TextLayer) kind = "text";
+                else if (L instanceof ShapeLayer) kind = "shape";
+                else if (L instanceof AVLayer && L.source && L.hasVideo) kind = "video";
+                out.push({ key: edgeKey(L), index: i, name: L.name, kind: kind, sel: L.selected });
+            }
+            return ok("", { comp: comp.name, layers: out });
+        } catch (e) { return fail("Erreur : " + e.message); }
+    };
     API.edgeText = function (optsJson) {
         try {
             var comp = needComp();
             var o = arg(optsJson) || {};
             var txt = String(o.text || "").replace(/^\s+|\s+$/g, "");
-            if (!txt) return fail("Choisis d'abord un texte pour ce preset.");
+            var M = null, i;
+            if (o.matteKey) {
+                M = edgeLayer(comp, o.matteKey);
+                if (!M) return fail("Le calque choisi pour le cache n'existe plus dans cette compo. Rafra\u00eechis la liste.");
+            } else if (!txt) return fail("Choisis d'abord un texte pour ce preset.");
             var mt = TrackMatteType[EDGE_MATTES[o.matte] || "ALPHA"];
             var widthPct = Math.max(0.2, Math.min(1, (parseFloat(o.width) || 80) / 100));
             var ffx = o.ffx ? new File(String(o.ffx)) : null;
             if (!ffx) return fail("Ce preset n'a pas de fichier .ffx : fais clic droit dessus pour en choisir un.");
             if (!ffx.exists) return fail("Fichier preset introuvable : " + String(o.ffx));
-            var sel = comp.selectedLayers, vids = [], i;
-            for (i = 0; i < sel.length; i++) {
-                var L = sel[i];
-                if (L instanceof AVLayer && L.source && L.hasVideo && !(L instanceof TextLayer)) vids.push(L);
+            var vids = [];
+            if (o.videoKey) {
+                var VV = edgeLayer(comp, o.videoKey);
+                if (!VV) return fail("La vid\u00e9o choisie n'existe plus dans cette compo. Rafra\u00eechis la liste.");
+                vids.push(VV);
+            } else {
+                var sel = comp.selectedLayers;
+                for (i = 0; i < sel.length; i++) {
+                    var L = sel[i];
+                    if (L !== M && L instanceof AVLayer && L.source && L.hasVideo && !(L instanceof TextLayer)) vids.push(L);
+                }
             }
-            if (!vids.length) return fail("S\u00e9lectionne d'abord la vid\u00e9o dans la timeline, puis clique sur le preset.");
+            if (!vids.length) return fail("S\u00e9lectionne d'abord la vid\u00e9o dans la timeline (ou choisis-la dans la liste \u00ab Vid\u00e9o \u00bb), puis clique sur le preset.");
+            for (i = 0; i < vids.length; i++) if (vids[i] === M) return fail("La vid\u00e9o et le cache ne peuvent pas \u00eatre le m\u00eame calque.");
+            var label = M ? M.name : txt;
             var t = comp.time;
             return undoable("Edge Detect Text", function () {
                 var made = [];
                 for (i = 0; i < vids.length; i++) {
                     var V = vids[i];
                     var E = V.duplicate();
-                    try { E.name = "EDGE \u2022 " + txt; } catch (eN) {}
+                    try { E.name = "EDGE \u2022 " + label; } catch (eN) {}
                     try { if (E.hasAudio) E.audioEnabled = false; } catch (eA) {}
                     deselectAll(comp); E.selected = true; comp.time = t;
                     E.applyPreset(ffx);
-                    var T = edgeMakeText(comp, txt, widthPct, E);
-                    try { T.name = "TEXTE \u2022 " + txt; } catch (eT) {}
-                    T.moveBefore(E);
+                    var T = M;
+                    if (!T) {
+                        T = edgeMakeText(comp, txt, widthPct, E);
+                        try { T.name = "TEXTE \u2022 " + txt; } catch (eT) {}
+                        T.moveBefore(E);
+                    }
                     if (typeof E.setTrackMatte === "function") {
                         E.setTrackMatte(T, mt);
                     } else {
+                        if (T.index !== E.index - 1) T.moveBefore(E);
                         E.trackMatteType = mt;
                     }
                     try { T.enabled = false; } catch (eV) {}
@@ -1731,7 +1772,8 @@
                 comp.time = t;
                 deselectAll(comp);
                 for (i = 0; i < made.length; i++) made[i].selected = true;
-                var m = "\u00ab " + (o.name || "Edge") + " \u00bb appliqu\u00e9 : texte \u00ab " + txt + " \u00bb + cache sur " + vids.length + " vid\u00e9o(s).";
+                var m = "\u00ab " + (o.name || "Edge") + " \u00bb appliqu\u00e9 sur \u00ab " + vids[0].name + " \u00bb" + (vids.length > 1 ? " (+" + (vids.length - 1) + ")" : "") +
+                    ", cache : \u00ab " + label + " \u00bb.";
                 return ok(m);
             });
         } catch (e) { return fail("Erreur : " + e.message); }
