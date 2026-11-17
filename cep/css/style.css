@@ -361,3 +361,54 @@ body.compact .card { gap: 4px; padding: 2px 7px 8px; }
 .fx-item mark { background: rgba(var(--acc-rgb), .35); color: #fff; border-radius: 2px; padding: 0 1px; }
 .fx-item { justify-content: flex-start; }
 .fx-item .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* =====================================================================
+   Animations légères : on n'anime QUE transform et opacity
+   (calculés par la carte graphique, sans redessiner la page -> pas de lag)
+   ===================================================================== */
+:root { --spd: 1; --acc2-rgb: 143, 211, 255; }
+.top, .tabs, .status, .scroller, .banner { position: relative; z-index: 1; }
+
+/* halos de couleur qui dérivent lentement derrière l'interface */
+.fx-blobs { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.fx-blobs i { position: absolute; width: 90vmax; height: 90vmax; border-radius: 50%; will-change: transform; }
+.fx-blobs i:first-child { left: -45vmax; top: -55vmax; background: radial-gradient(circle, rgba(var(--acc-rgb), calc(.16 * var(--gk))) 0%, rgba(var(--acc-rgb), 0) 62%); animation: blobA calc(26s / var(--spd)) ease-in-out infinite alternate; }
+.fx-blobs i:last-child { right: -50vmax; bottom: -60vmax; background: radial-gradient(circle, rgba(var(--acc2-rgb), calc(.13 * var(--gk))) 0%, rgba(var(--acc2-rgb), 0) 62%); animation: blobB calc(32s / var(--spd)) ease-in-out infinite alternate; }
+@keyframes blobA { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(35vmax, 25vmax, 0); } }
+@keyframes blobB { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-30vmax, -35vmax, 0); } }
+
+/* faisceau de lumière qui traverse le panneau */
+.fx-sweep { position: fixed; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.fx-sweep::before, .fx-sweep::after {
+  content: ""; position: absolute; top: -50%; left: -50%; width: 60%; height: 200%;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(var(--acc-rgb), calc(.09 * var(--gk))) 42%, rgba(255,255,255, calc(.08 * var(--gk))) 50%, rgba(var(--acc-rgb), calc(.09 * var(--gk))) 58%, rgba(255,255,255,0) 100%);
+  will-change: transform; opacity: 0;
+}
+body.anim-lr .fx-sweep::before, body.anim-both .fx-sweep::before { opacity: 1; animation: sweepLR calc(7s / var(--spd)) linear infinite; }
+body.anim-diag .fx-sweep::after, body.anim-both .fx-sweep::after { opacity: 1; animation: sweepDiag calc(9s / var(--spd)) linear infinite; animation-delay: calc(-3s / var(--spd)); }
+@keyframes sweepLR { 0% { transform: translate3d(-60%, 0, 0) rotate(0deg); } 70%, 100% { transform: translate3d(330%, 0, 0) rotate(0deg); } }
+@keyframes sweepDiag { 0% { transform: translate3d(-80%, -30%, 0) rotate(30deg); } 70%, 100% { transform: translate3d(320%, 30%, 0) rotate(30deg); } }
+
+/* reflet qui glisse sur les boutons au survol, et en boucle sur l'onglet actif et les boutons principaux */
+.btn, .tab { position: relative; overflow: hidden; }
+.btn::after, .tab::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 60%; pointer-events: none;
+  background: linear-gradient(105deg, rgba(255,255,255,0) 20%, rgba(255,255,255, calc(.16 * var(--gk))) 50%, rgba(255,255,255,0) 80%);
+  transform: translate3d(-130%, 0, 0);
+}
+body.anim-on .btn:hover::after { animation: shine .75s ease-out; }
+body.anim-on .tab.active::after, body.anim-on .btn.primary::after { animation: shineLoop calc(4.5s / var(--spd)) ease-in-out infinite; }
+@keyframes shine { from { transform: translate3d(-130%, 0, 0); } to { transform: translate3d(230%, 0, 0); } }
+@keyframes shineLoop { 0% { transform: translate3d(-130%, 0, 0); } 35%, 100% { transform: translate3d(230%, 0, 0); } }
+
+/* lignes et point lumineux qui « respirent » */
+body.anim-on .section-title::after { animation: breathe calc(3.2s / var(--spd)) ease-in-out infinite alternate; }
+body.anim-on .brand::before { animation: pulse calc(2.4s / var(--spd)) ease-in-out infinite alternate; }
+@keyframes breathe { from { opacity: .45; } to { opacity: 1; } }
+@keyframes pulse { from { transform: scale(.85); opacity: .75; } to { transform: scale(1.12); opacity: 1; } }
+
+/* animations coupées */
+body:not(.anim-on) .fx-blobs i, body:not(.anim-on) .fx-sweep::before, body:not(.anim-on) .fx-sweep::after { animation: none !important; }
+body:not(.anim-on) .fx-sweep { display: none; }
+.th-seg.th-seg3 button { font-size: calc(var(--fs) - 1.5px); }
+.th-row .val { width: auto; min-width: 30px; margin-right: 2px; }
