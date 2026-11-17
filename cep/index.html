@@ -128,15 +128,6 @@
     <!-- ================= INTRO ================= -->
     <section id="page-intro" class="page hidden">
       <div class="card">
-      <div class="section-title">Texte stylé</div>
-      <div class="muted small-text">Biseautage et estampage + incrustation en dégradé</div>
-      <div class="row center">
-        <button class="btn primary grow" id="btnBevel" title="Crée un texte avec biseautage et estampage + incrustation en dégradé. Textes sélectionnés : le style est ajouté dessus (ou la taille mise à jour)"><i class="ic"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5h10M8 3.5v9.5"/><path d="M5.5 13h5"/></svg></i>Texte biseauté</button>
-        <label class="muted" for="bevelSize" title="Taille du biseautage">Taille</label>
-        <input id="bevelSize" type="number" value="10" min="0" max="250" step="1" title="Taille du biseautage (0 à 250)">
-      </div>
-      </div>
-      <div class="card">
       <div class="section-title">Lyrics</div>
       <div class="muted small-text">Un mot = un texte, calé sur un marqueur</div>
       <button class="btn full" id="btnDetect"><i class="ic"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9h1.5M5 6v6M8 4v8M11 6.5v4"/><path d="M13 2.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" fill="currentColor" stroke="none"/></svg></i>Détecter les paroles de la musique</button>
@@ -155,6 +146,15 @@
       <div class="row">
         <button class="btn grow" id="btnUpper"><i class="ic"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12.5L5.5 3.5l3 9M3.5 9.5h4M10 12.5V3.5h2.2a2 2 0 0 1 0 4H10m0 0h2.5a2.5 2.5 0 0 1 0 5H10"/></svg></i>Majuscule</button>
         <button class="btn grow" id="btnLower"><i class="ic"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="10" r="2.5"/><path d="M7.5 7.5v5M11 3.5v9"/><circle cx="12.6" cy="10" r="1.6"/></svg></i>Minuscule</button>
+      </div>
+      </div>
+      <div class="card">
+      <div class="section-title">Texte incrustation</div>
+      <div class="muted small-text">Biseautage et estampage + mode Incrustation (transparent)</div>
+      <div class="row center">
+        <button class="btn primary grow" id="btnBevel" title="Crée un texte avec biseautage et estampage, en mode de fusion Incrustation. Textes sélectionnés : le style est ajouté dessus (ou la taille mise à jour)"><i class="ic"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5h10M8 3.5v9.5"/><path d="M5.5 13h5"/></svg></i>Texte incrustation</button>
+        <label class="muted" for="bevelSize" title="Taille du biseautage">Taille</label>
+        <input id="bevelSize" type="number" value="10" min="0" max="250" step="1" title="Taille du biseautage (0 à 250)">
       </div>
       </div>
     </section>
