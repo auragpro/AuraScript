@@ -1,5 +1,5 @@
 {
-  "version": "3.1.4",
+  "version": "3.1.5",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,6 +9,6 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "« Extraire l'audio » : le son est séparé directement dans la timeline, plus aucun fichier n'est créé sur le PC"
+    "Les vidéos TikTok arrivent maintenant au début de la timeline (0 s)"
   ]
 }
