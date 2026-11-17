@@ -481,3 +481,8 @@ body.anim-on.edge.anim-diag .btn::before, body.anim-on.edge.anim-diag .tab::befo
 .ed-grid.deleting .ed-item { border-style: dashed; }
 .ed-item.picked { background: #5a2323; border-color: #e05a4a; border-style: solid !important; color: #fff; }
 .ed-grid .fx-empty { grid-column: 1 / -1; }
+.ed-link { display: flex; flex-direction: column; gap: 5px; }
+.ed-lrow { display: flex; align-items: center; gap: 6px; }
+.ed-lrow > label { width: 44px; flex-shrink: 0; color: #a9a6ba; font-size: calc(var(--fs) - 1px); }
+.ed-lrow > select { flex: 1; min-width: 0; }
+.ed-lrow > .btn.square { flex-shrink: 0; }
