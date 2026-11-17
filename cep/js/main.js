@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.1.4";
+    var VERSION = "3.1.5";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -301,7 +301,7 @@
             if (!link || !TIKTOK.test(link)) { modal("Colle un lien TikTok valide.\n\nSur TikTok : Partager > Copier le lien.", { cancel: false }); return; }
             ttBusy = true; box.disabled = true; btn.disabled = true;
             downloadTikTok(link).then(function (file) {
-                return host("importImage", J(file)).then(function (r) { showResult(r); if (r.ok) box.value = ""; });
+                return host("importImage", J(file), true).then(function (r) { showResult(r); if (r.ok) box.value = ""; });
             }).catch(function (e) {
                 status("");
                 var m = e && e.message !== undefined ? e.message : String(e);
