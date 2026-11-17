@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.5.0";
+    var VERSION = "3.5.1";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -745,18 +745,16 @@
         var data = null, editId = null, delMode = false, picked = {}, last = null;
         function file() { return path.join(process.env.APPDATA || os.homedir(), "AuraScript", "edge-text.json"); }
         function defaults() {
-            return {
-                texts: ["EDGE", "AURA"],
-                presets: [
-                    { id: "e1", name: "Edge blanc", text: "EDGE", matte: "alpha", invert: false, blend: 0, width: 80, ffx: "" },
-                    { id: "e2", name: "Edge néon", text: "EDGE", matte: "alpha", invert: true, blend: 0, width: 80, ffx: "" }
-                ]
-            };
+            return { texts: [], presets: [] };
         }
         function load() {
             try { data = JSON.parse(fs.readFileSync(file(), "utf8")); } catch (e) { data = null; }
             if (!data || !Array.isArray(data.presets)) data = defaults();
             if (!Array.isArray(data.texts)) data.texts = [];
+            // seuls TES presets (.ffx) sont gardés : on retire les anciens presets intégrés
+            var n = data.presets.length;
+            data.presets = data.presets.filter(function (p) { return p && p.ffx; });
+            if (n !== data.presets.length) save();
         }
         function save() {
             try { fs.mkdirSync(path.dirname(file()), { recursive: true }); fs.writeFileSync(file(), JSON.stringify(data, null, 1), "utf8"); }
@@ -772,7 +770,7 @@
         function apply(p) {
             last = p.id; render();
             status("Application de « " + p.name + " »...");
-            return host("edgeText", J({ name: p.name, text: p.text, matte: p.matte, invert: !!p.invert, blend: p.blend, width: p.width, ffx: p.ffx || "" })).then(function (r) {
+            return host("edgeText", J({ name: p.name, text: p.text, matte: p.matte, width: p.width, ffx: p.ffx || "" })).then(function (r) {
                 if (!r.ok && /Sélectionne d'abord la vid/.test(r.msg || "")) { status("Preset prêt. " + r.msg); return r; }
                 return showResult(r);
             });
@@ -781,12 +779,12 @@
         // ---- liste des presets ----
         function render() {
             var box = $("edList"); box.innerHTML = "";
-            if (!data.presets.length) { box.innerHTML = '<div class="fx-empty">Aucun preset. Clique sur « + » pour en créer un.</div>'; return; }
+            if (!data.presets.length) { box.innerHTML = '<div class="fx-empty">Aucun preset pour le moment. Clique sur « + » pour ajouter un de tes presets .ffx.</div>'; return; }
             data.presets.forEach(function (p) {
                 var b = document.createElement("button");
                 b.className = "btn ed-item" + (p.id === last ? " last" : "") + (delMode && picked[p.id] ? " picked" : "");
-                b.title = p.name + "\nTexte : " + p.text + "\nCache : " + (MATTES[p.matte] || "Alpha") + (p.invert ? " · contours inversés" : "") +
-                    (p.ffx ? "\nEffet : " + path.basename(p.ffx).replace(/\.ffx$/i, "") : "") + "\n\nClic : appliquer · Clic droit : modifier";
+                b.title = p.name + "\nTexte : " + p.text + "\nCache : " + (MATTES[p.matte] || "Alpha") +
+                    "\nFichier : " + path.basename(p.ffx || "") + "\n\nClic : appliquer · Clic droit : modifier";
                 var nm = document.createElement("span"); nm.className = "nm"; nm.textContent = p.name;
                 var sub = document.createElement("span"); sub.className = "sub"; sub.textContent = "« " + p.text + " » · " + (MATTES[p.matte] || "Alpha");
                 b.appendChild(nm); b.appendChild(sub);
@@ -832,31 +830,41 @@
         function openForm(p) {
             if (delMode) setDel(false);
             editId = p ? p.id : null;
-            $("edFormTitle").textContent = p ? "Modifier « " + p.name + " »" : "Nouveau preset";
-            $("edSave").textContent = p ? "Enregistrer et appliquer" : "Créer et appliquer";
+            $("edFormTitle").textContent = p ? "Modifier « " + p.name + " »" : "Ajouter un preset";
+            $("edSave").textContent = p ? "Enregistrer et appliquer" : "Ajouter et appliquer";
             $("edName").value = p ? p.name : "";
             if (p && p.text && data.texts.indexOf(p.text) < 0) data.texts.push(p.text);
             renderTexts(p ? p.text : data.texts[0]);
             setSeg("edMatte", p ? p.matte : "alpha");
-            $("edInvert").checked = p ? !!p.invert : false;
-            $("edBlend").value = p ? p.blend : 0; $("edWidth").value = p ? p.width : 80; vals();
-            var s = $("edFfx"); s.innerHTML = '<option value="">Aucun</option>';
+            $("edWidth").value = p ? p.width : 80; vals();
+            var s = $("edFfx"); s.innerHTML = '<option value="">— choisis ton preset —</option>';
             ffxList().forEach(function (it) { var o = document.createElement("option"); o.value = it.path; o.textContent = it.name; s.appendChild(o); });
-            if (p && p.ffx) { if (![].some.call(s.options, function (o) { return o.value === p.ffx; })) { var o = document.createElement("option"); o.value = p.ffx; o.textContent = path.basename(p.ffx).replace(/\.ffx$/i, ""); s.appendChild(o); } s.value = p.ffx; }
+            if (p && p.ffx) addFfxOption(p.ffx);
             $("edForm").classList.remove("hidden");
             $("edAdd").classList.add("on");
             setTimeout(function () { $("edName").focus(); }, 30);
         }
+        function addFfxOption(f) {
+            var s = $("edFfx");
+            if (![].some.call(s.options, function (o) { return o.value === f; })) { var o = document.createElement("option"); o.value = f; o.textContent = path.basename(f).replace(/\.ffx$/i, ""); s.appendChild(o); }
+            s.value = f;
+            if (!$("edName").value.replace(/\s/g, "")) $("edName").value = path.basename(f).replace(/\.ffx$/i, "");
+        }
+        function browse() {
+            host("fxPickFiles").then(function (r) { if (r && r.ok && r.data && r.data.length) addFfxOption(r.data[0]); });
+        }
         function closeForm() { $("edForm").classList.add("hidden"); $("edAdd").classList.remove("on"); editId = null; }
-        function vals() { $("edBlendV").textContent = $("edBlend").value + " %"; $("edWidthV").textContent = $("edWidth").value + " %"; }
+        function vals() { $("edWidthV").textContent = $("edWidth").value + " %"; }
         function submit() {
+            var ffx = $("edFfx").value;
+            if (!ffx) { modal("Choisis d'abord ton preset .ffx (dans la liste ou avec « Parcourir… »).", { cancel: false }); return; }
             var text = $("edText").value;
             if (!text) { modal("Ajoute d'abord un texte avec le bouton + à côté de « Texte ».", { cancel: false }); return; }
-            var name = $("edName").value.replace(/^\s+|\s+$/g, "") || ("Edge " + (data.presets.length + 1));
+            var name = $("edName").value.replace(/^\s+|\s+$/g, "") || path.basename(ffx).replace(/\.ffx$/i, "");
             var p = editId ? find(editId) : null;
             if (!p) { p = { id: "e" + Date.now().toString(36) }; data.presets.push(p); }
-            p.name = name; p.text = text; p.matte = segVal("edMatte"); p.invert = $("edInvert").checked;
-            p.blend = +$("edBlend").value; p.width = +$("edWidth").value; p.ffx = $("edFfx").value;
+            p.name = name; p.text = text; p.matte = segVal("edMatte"); p.width = +$("edWidth").value; p.ffx = ffx;
+            delete p.invert; delete p.blend;
             save(); closeForm(); render();
             apply(p);   // le nouveau preset s'applique tout de suite sur la vidéo sélectionnée
         }
@@ -885,7 +893,9 @@
             $("edTextDel").onclick = delText;
             $("edText").onchange = function () { renderTexts(this.value); };
             [].forEach.call($("edMatte").querySelectorAll("button"), function (b) { b.onclick = function () { setSeg("edMatte", b.getAttribute("data-m")); }; });
-            $("edBlend").oninput = vals; $("edWidth").oninput = vals;
+            $("edWidth").oninput = vals;
+            $("edBrowse").onclick = browse;
+            $("edFfx").onchange = function () { if (this.value) addFfxOption(this.value); };
             $("edTrash").onclick = function () { setDel(!delMode); };
             $("edDelCancel").onclick = function () { setDel(false); };
             $("edDelOk").onclick = function () {
