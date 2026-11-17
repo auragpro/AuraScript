@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.0.6";
+    var VERSION = "3.0.7";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -126,9 +126,79 @@
     $("btnAnchor").onclick = function () { host("anchor").then(function (r) { showResult(r); }); };
     $("btnReverse").onclick = function () { host("reverse").then(function (r) { showResult(r); }); };
     $("btnDuplicate").onclick = function () { host("duplicate").then(function (r) { showResult(r); }); };
-    try { $("solidColor").value = localStorage.getItem("aura.solid") || "#000000"; } catch (e) {}
-    $("solidColor").addEventListener("change", function () { try { localStorage.setItem("aura.solid", $("solidColor").value); } catch (e) {} });
-    $("btnSolid").onclick = function () { host("solid", J($("solidColor").value)).then(function (r) { showResult(r); }); };
+    $("btnSolid").onclick = function () { Picker.close(); host("solid", J(Picker.value())).then(function (r) { showResult(r); }); };
+
+    // ---------- sélecteur de couleur (thème sombre) ----------
+    var Picker = (function () {
+        var hsv = [0, 0, 0], pop = $("picker"), sv = $("pkSV"), hue = $("pkHue"), hexIn = $("pkHex"), sw = $("solidSwatch");
+        var PRESETS = ["#000000", "#FFFFFF", "#FF0000", "#FF7A00", "#FFD400", "#00C853", "#00B0FF", "#2962FF", "#AA00FF", "#FF4081"];
+        function hsv2rgb(h, s, v) {
+            function f(n) { var k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); }
+            return [f(5), f(3), f(1)].map(function (x) { return Math.round(x * 255); });
+        }
+        function rgb2hsv(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, h = 0;
+            if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h *= 60; if (h < 0) h += 360; }
+            return [h, mx ? d / mx : 0, mx];
+        }
+        function toHex(c) { return "#" + c.map(function (x) { return ("0" + x.toString(16)).slice(-2); }).join("").toUpperCase(); }
+        function value() { return toHex(hsv2rgb(hsv[0], hsv[1], hsv[2])); }
+        function setHex(h) {
+            var m = /^#?([0-9a-f]{6})$/i.exec(String(h).trim());
+            if (!m) return false;
+            var n = parseInt(m[1], 16);
+            var nh = rgb2hsv((n >> 16) & 255, (n >> 8) & 255, n & 255);
+            if (nh[1] === 0 || nh[2] === 0) nh[0] = hsv[0];
+            hsv = nh; save(); draw(); return true;
+        }
+        function save() { try { localStorage.setItem("aura.solid", value()); } catch (e) {} }
+        function draw() {
+            sw.style.background = value();
+            if (document.activeElement !== hexIn) hexIn.value = value().slice(1);
+            if (pop.classList.contains("hidden")) return;
+            var f = fitCanvas(sv), g = f.g;
+            var base = hsv2rgb(hsv[0], 1, 1);
+            g.fillStyle = "rgb(" + base.join(",") + ")"; g.fillRect(0, 0, f.w, f.h);
+            var gw = g.createLinearGradient(0, 0, f.w, 0); gw.addColorStop(0, "#fff"); gw.addColorStop(1, "rgba(255,255,255,0)");
+            g.fillStyle = gw; g.fillRect(0, 0, f.w, f.h);
+            var gb = g.createLinearGradient(0, 0, 0, f.h); gb.addColorStop(0, "rgba(0,0,0,0)"); gb.addColorStop(1, "#000");
+            g.fillStyle = gb; g.fillRect(0, 0, f.w, f.h);
+            var x = hsv[1] * f.w, y = (1 - hsv[2]) * f.h;
+            g.lineWidth = 2; g.strokeStyle = hsv[2] > 0.6 ? "#000" : "#fff";
+            g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.stroke();
+            var h2 = fitCanvas(hue), gh = h2.g, gr = gh.createLinearGradient(0, 0, h2.w, 0);
+            [0, 60, 120, 180, 240, 300, 360].forEach(function (d) { gr.addColorStop(d / 360, "hsl(" + d + ",100%,50%)"); });
+            gh.clearRect(0, 0, h2.w, h2.h); gh.fillStyle = gr; gh.fillRect(0, 0, h2.w, h2.h);
+            var hx = hsv[0] / 360 * h2.w;
+            gh.lineWidth = 2; gh.strokeStyle = "#fff"; gh.beginPath(); gh.arc(Math.min(Math.max(hx, 6), h2.w - 6), h2.h / 2, 5, 0, Math.PI * 2); gh.stroke();
+        }
+        function dragOn(el, fn) {
+            var on = false;
+            function at(e) { var r = el.getBoundingClientRect(); fn(clamp((e.clientX - r.left) / r.width, 0, 1), clamp((e.clientY - r.top) / r.height, 0, 1)); save(); draw(); }
+            el.addEventListener("pointerdown", function (e) { on = true; el.setPointerCapture(e.pointerId); at(e); e.preventDefault(); });
+            el.addEventListener("pointermove", function (e) { if (on) at(e); });
+            el.addEventListener("pointerup", function (e) { on = false; try { el.releasePointerCapture(e.pointerId); } catch (x) {} });
+        }
+        dragOn(sv, function (x, y) { hsv[1] = x; hsv[2] = 1 - y; });
+        dragOn(hue, function (x) { hsv[0] = x * 360; });
+        PRESETS.forEach(function (c) {
+            var b = document.createElement("button"); b.style.background = c; b.title = c;
+            b.onclick = function () { setHex(c); };
+            $("pkPresets").appendChild(b);
+        });
+        hexIn.addEventListener("input", function () { setHex(hexIn.value); });
+        hexIn.addEventListener("keydown", function (e) { if (e.key === "Enter") close(); });
+        function open() { pop.classList.remove("hidden"); requestAnimationFrame(draw); }
+        function close() { pop.classList.add("hidden"); draw(); }
+        sw.onclick = function (e) { e.stopPropagation(); if (pop.classList.contains("hidden")) open(); else close(); };
+        $("pkOk").onclick = close;
+        document.addEventListener("pointerdown", function (e) { if (!pop.classList.contains("hidden") && !pop.contains(e.target) && e.target !== sw) close(); });
+        var saved = "#000000";
+        try { saved = localStorage.getItem("aura.solid") || "#000000"; } catch (e) {}
+        if (!setHex(saved)) setHex("#000000");
+        return { value: value, close: close };
+    })();
 
     // =====================================================================
     // INTRO : paroles, presets, casse
