@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.0.8";
+    var VERSION = "3.0.9";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -130,7 +130,8 @@
 
     // ---------- coller une image depuis le presse-papiers ----------
     var PasteImage = (function () {
-        var IMG_OK = /\.(png|jpe?g|gif|bmp|tiff?|psd|tga|exr|ai|eps|pdf|svg)$/i;
+        var IMG_OK = /\.(png|jpe?g|gif|bmp|tiff?|psd|tga|exr|ai|eps|pdf|svg|mp4|mov|m4v)$/i;
+        var TIKTOK = /^https?:\/\/([a-z0-9-]+\.)*tiktok\.com\//i;
         var IMG_ANY = /\.(png|jpe?g|gif|bmp|tiff?|psd|tga|exr|webp|avif|heic|ico|jfif)$/i;
         function stamp() { var d = new Date(); function p(n) { return ("0" + n).slice(-2); } return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "_" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()); }
         function imgDir() { var d = path.join(process.env.APPDATA || os.homedir(), "AuraScript", "images"); fs.mkdirSync(d, { recursive: true }); return d; }
@@ -185,6 +186,69 @@
                 return out;
             });
         }
+        // ---- vidéo TikTok (yt-dlp, téléchargé une seule fois) ----
+        function toolsDir() { var d = path.join(process.env.APPDATA || os.homedir(), "AuraScript", "tools"); fs.mkdirSync(d, { recursive: true }); return d; }
+        function ytdlp() { return path.join(toolsDir(), "yt-dlp.exe"); }
+        function ensureYtdlp() {
+            var exe = ytdlp();
+            try { if (fs.statSync(exe).size > 1000000) return Promise.resolve(exe); } catch (e) {}
+            return modal("Première vidéo TikTok : AuraScript va télécharger l'outil yt-dlp (environ 18 Mo, une seule fois).\n\nContinuer ?").then(function (yes) {
+                if (!yes) throw new Error("");
+                status("Téléchargement de yt-dlp (une seule fois)...");
+                var part = exe + ".part";
+                return spawnText("curl.exe", ["-s", "-L", "--fail", "-o", part, "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"]).then(function (r) {
+                    if (r.code !== 0) throw new Error("Le téléchargement de yt-dlp a échoué. Vérifie ta connexion internet.");
+                    fs.renameSync(part, exe);
+                    return exe;
+                });
+            });
+        }
+        function runYtdlp(exe, args) {
+            return new Promise(function (resolve) {
+                var out = "", p;
+                try { p = cp.spawn(exe, args, { windowsHide: true }); } catch (e) { resolve({ code: -1, out: String(e) }); return; }
+                try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch (e) {}
+                function onData(d) {
+                    var t = d.toString(); out += t; if (out.length > 20000) out = out.slice(-10000);
+                    var m = /\[download\]\s+([\d.]+)%/.exec(t);
+                    if (m) status("Téléchargement de la vidéo TikTok... " + Math.floor(parseFloat(m[1])) + " %");
+                }
+                p.stdout.on("data", onData); p.stderr.on("data", onData);
+                p.on("error", function (e) { resolve({ code: -1, out: out + String(e) }); });
+                p.on("close", function (c) { resolve({ code: c, out: out }); });
+            });
+        }
+        function downloadTikTok(url) {
+            return ensureYtdlp().then(function (exe) {
+                var dir = path.join(process.env.APPDATA || os.homedir(), "AuraScript", "videos");
+                fs.mkdirSync(dir, { recursive: true });
+                var name = "tiktok_" + stamp();
+                var args = ["--no-playlist", "--newline", "--no-part", "--restrict-filenames",
+                    "-f", "b[vcodec^=h264]/b[vcodec^=avc1]/bv*[vcodec^=avc1]+ba/b",
+                    "--merge-output-format", "mp4", "-o", path.join(dir, name + ".%(ext)s")];
+                var ff = ffmpegPath();
+                if (ff) args.push("--ffmpeg-location", path.dirname(ff));
+                args.push(url);
+                function find() {
+                    var f = fs.readdirSync(dir).filter(function (n) { return n.indexOf(name + ".") === 0 && /\.(mp4|mov|m4v)$/i.test(n); })[0];
+                    return f ? path.join(dir, f) : null;
+                }
+                status("Téléchargement de la vidéo TikTok...");
+                return runYtdlp(exe, args).then(function (r) {
+                    var f = find();
+                    if (r.code === 0 && f) return f;
+                    // TikTok change souvent : on met yt-dlp à jour puis on réessaie une fois
+                    status("Mise à jour de yt-dlp...");
+                    return runYtdlp(exe, ["-U"]).then(function () { return runYtdlp(exe, args); }).then(function (r2) {
+                        var f2 = find();
+                        if (r2.code === 0 && f2) return f2;
+                        var why = (r2.out.match(/ERROR:.*$/m) || [""])[0];
+                        throw new Error("Impossible de récupérer cette vidéo TikTok." + (why ? "\n\n" + why.slice(0, 300) : "") + "\n\nVérifie que le lien est public et réessaie.");
+                    });
+                });
+            });
+        }
+
         function download(url, base) {
             var tmp = base + ".dl";
             return spawnText("curl.exe", ["-s", "-L", "--fail", "-A", "Mozilla/5.0", "-o", tmp, "-w", "%{content_type}", url]).then(function (r) {
@@ -213,9 +277,12 @@
                 }
                 if (res.indexOf("TEXT:") === 0) {
                     var t = res.slice(5).trim();
+                    if (TIKTOK.test(t)) return downloadTikTok(t.split(/\s+/)[0]);
+                    var link = (/https?:\/\/\S+/i.exec(t) || [])[0];
+                    if (link && TIKTOK.test(link)) return downloadTikTok(link);
                     if (/^https?:\/\/\S+$/i.test(t)) { status("Téléchargement de l'image..."); return download(t, base); }
                     if (/^[a-z]:\\.+/i.test(t) && fs.existsSync(t)) return t;
-                    throw new Error("Le presse-papiers contient du texte, pas une image.\n\nSur Google ou Pinterest : clic droit sur l'image > Copier l'image.");
+                    throw new Error("Le presse-papiers contient du texte, pas une image ni un lien TikTok.\n\nSur Google ou Pinterest : clic droit sur l'image > Copier l'image.\nSur TikTok : Partager > Copier le lien.");
                 }
                 if (res.indexOf("ERR:") === 0) throw new Error("Lecture du presse-papiers impossible.\n" + res.slice(4).slice(-300));
                 throw new Error("Aucune image dans le presse-papiers.\n\nSur Google ou Pinterest : clic droit sur l'image > Copier l'image, puis reclique ici.");
@@ -223,7 +290,8 @@
                 return host("importImage", J(file)).then(function (r) { showResult(r); });
             }).catch(function (e) {
                 status("");
-                modal(e && e.message ? e.message : String(e), { cancel: false });
+                var m = e && e.message !== undefined ? e.message : String(e);
+                if (m) modal(m, { cancel: false });
             });
         }
         return { run: run };
