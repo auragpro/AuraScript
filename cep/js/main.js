@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.4.8";
+    var VERSION = "3.4.9";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -323,11 +323,11 @@
     $("btnUncomp").onclick = function () { host("uncomp").then(function (r) { showResult(r, true); }); };
     $("btnAnchor").onclick = function () { host("anchor").then(function (r) { showResult(r); }); };
     $("btnBevel").onclick = function () {
-        var v = parseFloat($("bevelSize").value); if (!(v >= 0)) v = 10;
-        try { localStorage.setItem("aura.bevelSize", String(v)); } catch (e) {}
+        var v = parseFloat($("bevelSize").value); if (!(v >= 0)) v = 5;
+        try { localStorage.setItem("aura.bevel", String(v)); } catch (e) {}
         host("styledText", J(v)).then(function (r) { showResult(r); });
     };
-    try { var bs = localStorage.getItem("aura.bevelSize"); if (bs) $("bevelSize").value = bs; } catch (e) {}
+    try { var bs = localStorage.getItem("aura.bevel"); if (bs) $("bevelSize").value = bs; } catch (e) {}
     $("btnFill").onclick = function () { host("fitLayers", J("fill")).then(function (r) { showResult(r); }); };
     $("btnReverse").onclick = function () { host("reverse").then(function (r) { showResult(r); }); };
     $("btnDuplicate").onclick = function () { host("duplicate").then(function (r) { showResult(r); }); };
