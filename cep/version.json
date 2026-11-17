@@ -1,5 +1,5 @@
 {
-  "version": "3.0.5",
+  "version": "3.0.6",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,8 +9,6 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "OUTILS : bouton Inverser (clés sélectionnées, ou ordre des calques)",
-    "OUTILS : bouton Dupliquer",
-    "OUTILS : bouton Solide avec choix de la couleur"
+    "Inverser = mode miroir : retourne les calques sélectionnés horizontalement"
   ]
 }
