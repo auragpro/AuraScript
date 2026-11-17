@@ -1,0 +1,93 @@
+/* AuraScript — interface minimaliste noir et blanc */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: #121212; color: #d9d9d9;
+  font: 11px/1.35 "Segoe UI", Arial, sans-serif;
+  user-select: none; overflow: hidden;
+}
+body { display: flex; flex-direction: column; }
+.hidden { display: none !important; }
+.muted { color: #8a8a8a; }
+.small-text { font-size: 10.5px; }
+
+.top { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px 4px; }
+.brand span:first-child { font-weight: 600; color: #e8e8e8; }
+
+.banner { margin: 4px 10px; padding: 8px 10px; border: 1px solid #3a3a3a; background: #1a1a1a; }
+.banner-title { font-weight: 600; margin-bottom: 4px; }
+.banner ul { margin: 0 0 6px 16px; padding: 0; }
+
+.tabs { display: flex; gap: 4px; padding: 4px 10px; }
+.tab {
+  flex: 1; height: 26px; border: 1px solid #333; background: #1b1b1b; color: #a8a8a8;
+  font: 600 11px "Segoe UI", Arial, sans-serif; letter-spacing: .3px; cursor: pointer;
+}
+.tab.active { background: #e6e6e6; color: #111; border-color: #e6e6e6; }
+
+.status { min-height: 16px; padding: 2px 10px; color: #9a9a9a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* zone qui défile à la molette */
+.scroller { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 10px 12px; scroll-behavior: smooth; }
+.scroller::-webkit-scrollbar { width: 8px; }
+.scroller::-webkit-scrollbar-track { background: transparent; }
+.scroller::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
+.scroller::-webkit-scrollbar-thumb:hover { background: #555; }
+
+.page { display: flex; flex-direction: column; gap: 6px; }
+.section-title { font-weight: 700; color: #cfcfcf; padding-top: 4px; border-bottom: 1px solid #2c2c2c; padding-bottom: 3px; }
+
+.row { display: flex; gap: 4px; }
+.row.center { align-items: center; }
+.row.end { justify-content: flex-end; }
+.col { display: flex; flex-direction: column; gap: 4px; }
+.grow { flex: 1; min-width: 0; }
+.full { width: 100%; }
+
+.btn {
+  height: 26px; padding: 0 8px; border: 1px solid #343434; background: #1d1d1d; color: #d0d0d0;
+  font: 11px "Segoe UI", Arial, sans-serif; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.btn:active { background: #262626; }
+.btn.primary { background: #e6e6e6; color: #111; border-color: #e6e6e6; font-weight: 600; }
+.btn.primary:active { background: #cfcfcf; }
+.btn.small { height: 22px; align-self: center; }
+.btn.square { width: 26px; padding: 0; flex: 0 0 26px; }
+.btn.toggle.on { background: #e6e6e6; color: #111; border-color: #e6e6e6; font-weight: 600; }
+.btn:disabled { opacity: .4; cursor: default; }
+
+.tools-top { align-items: stretch; }
+.align-grid { display: grid; grid-template-columns: repeat(3, 28px); grid-template-rows: repeat(3, 28px); gap: 4px; }
+.align-grid .btn { width: 28px; height: 28px; padding: 0; font-size: 14px; color: #9a9a9a; }
+.align-grid .btn.center { border-color: #777; color: #ddd; }
+.tools-top .col .btn { flex: 1; }
+
+textarea, input[type=text], input[type=number], select {
+  background: #0d0d0d; color: #ddd; border: 1px solid #333; font: 11px "Segoe UI", Arial, sans-serif;
+  padding: 4px 6px; outline: none;
+}
+textarea { width: 100%; resize: vertical; min-height: 90px; user-select: text; }
+input[type=number] { width: 52px; }
+input[type=text] { user-select: text; height: 24px; }
+select { height: 24px; }
+textarea:focus, input:focus, select:focus { border-color: #6a6a6a; }
+
+/* bibliothèque de courbes */
+.lib-row { align-items: stretch; }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 4px; max-height: 236px; overflow-y: auto; padding-right: 2px; }
+.thumbs::-webkit-scrollbar { width: 6px; }
+.thumbs::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+.thumb { height: 54px; border: 1px solid #2f2f2f; background: #1c1c1c; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; }
+.thumb canvas { width: 100%; height: 40px; display: block; }
+.thumb .name { font-size: 9.5px; color: #8c8c8c; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
+.thumb.sel { background: #e1e1e1; border-color: #e1e1e1; }
+.thumb.sel .name { color: #111; font-weight: 600; }
+.btn.read { width: 54px; height: auto; white-space: normal; line-height: 1.2; }
+
+.editor { width: 100%; height: 170px; background: #0c0c0c; border: 1px solid #2c2c2c; display: block; touch-action: none; cursor: crosshair; }
+
+/* fenêtre */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 10; }
+.modal-box { width: 86%; max-width: 360px; background: #1a1a1a; border: 1px solid #3a3a3a; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.modal-text { white-space: pre-wrap; color: #ddd; }
+.modal-box input { width: 100%; }
