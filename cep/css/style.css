@@ -486,3 +486,158 @@ body.anim-on.edge.anim-diag .btn::before, body.anim-on.edge.anim-diag .tab::befo
 .ed-lrow > label { width: 44px; flex-shrink: 0; color: #a9a6ba; font-size: calc(var(--fs) - 1px); }
 .ed-lrow > select { flex: 1; min-width: 0; }
 .ed-lrow > .btn.square { flex-shrink: 0; }
+
+/* =====================================================================
+   3.6.0 : style « Studio » (par défaut) — sobre, net, façon outil pro.
+   Pas de glow, pas de dégradés arc-en-ciel : surfaces plates, filets fins,
+   une seule couleur d'accent utilisée avec parcimonie.
+   Le style « Néon » (ancien) reste disponible dans Thème.
+   ===================================================================== */
+body.studio {
+  --s-bg: #111113; --s-panel: #17171a; --s-raise: #1e1e22; --s-hover: #25252a;
+  --s-line: #26262b; --s-line2: #33333a; --s-txt: #e6e6ea; --s-dim: #8d8d96; --s-faint: #5d5d66;
+  --acc-soft: rgba(var(--acc-rgb), .14); --acc-line: rgba(var(--acc-rgb), .55);
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  color: var(--s-txt); letter-spacing: .1px;
+  -webkit-font-smoothing: antialiased;
+}
+body.studio { background: var(--s-bg); background-image: none; }
+body.studio .fx-blobs, body.studio .fx-sweep { display: none !important; }
+body.studio .btn::before, body.studio .tab::before, body.studio .card::before,
+body.studio .btn::after, body.studio .tab::after { display: none !important; animation: none !important; }
+body.studio .section-title::after, body.studio .brand::before { animation: none !important; }
+body.studio * { text-shadow: none; }
+body.studio .btn:active { transform: none; }
+
+/* en-tête */
+body.studio .top { padding: 10px 12px 8px; }
+body.studio .brand { gap: 8px; }
+body.studio .brand::before {
+  width: 10px; height: 10px; border-radius: 2px; box-shadow: none;
+  background: rgb(var(--acc-rgb));
+  -webkit-mask: linear-gradient(135deg, #000 50%, rgba(0,0,0,.45) 50%); /* petit carré coupé en biais */
+}
+body.studio .brand span:first-child {
+  background: none; -webkit-background-clip: border-box; background-clip: border-box; color: var(--s-txt);
+  filter: none; font-size: calc(var(--fs) + 2px); font-weight: 650; letter-spacing: -.1px;
+}
+body.studio #version { color: var(--s-faint); font-family: Consolas, "Cascadia Mono", monospace; font-size: calc(var(--fs) - 1.5px); }
+body.studio #update { color: var(--s-dim); }
+body.studio #btnUpdate, body.studio #btnUpdate:hover {
+  background: rgb(var(--acc-rgb)); color: #0e0e10; border: 0; border-radius: calc(var(--rad) - 1px); box-shadow: none; font-weight: 600;
+}
+
+/* onglets : texte + filet d'accent sous l'onglet actif */
+body.studio .tabs { gap: 0; padding: 0 12px; border-bottom: 1px solid var(--s-line); }
+body.studio .tab, body.studio .tab:not(.active) {
+  height: calc(var(--h) + 4px); background: transparent; border: 0; border-radius: 0; box-shadow: none;
+  color: var(--s-dim); font-weight: 600; font-size: calc(var(--fs) - 1px); letter-spacing: .8px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+body.studio .tab:hover { color: var(--s-txt); border-color: transparent; border-bottom-color: var(--s-line2); box-shadow: none; }
+body.studio .tab.active {
+  background: transparent; color: var(--s-txt); box-shadow: none;
+  border-bottom: 2px solid rgb(var(--acc-rgb));
+}
+body.studio .tab .ic { opacity: .55; }
+body.studio .tab.active .ic { opacity: 1; color: rgb(var(--acc-rgb)); }
+
+/* barre d'état : simple ligne de texte */
+body.studio .status {
+  margin: 6px 12px 0; padding: 0 0 0 12px; background: none; border: 0; border-radius: 0;
+  color: var(--s-dim); position: relative;
+}
+body.studio .status::before { content: ""; position: absolute; left: 1px; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: rgb(var(--acc-rgb)); }
+body.studio .scroller { padding: 10px 12px 18px; }
+
+/* cartes */
+body.studio .card {
+  background: var(--s-panel); border: 1px solid var(--s-line); border-radius: calc(var(--rad) + 2px);
+  box-shadow: none; padding: 2px 10px 10px; gap: 6px;
+}
+body.studio .page { gap: 8px; }
+body.studio .section-title {
+  padding: 9px 0 5px; margin: 0; color: var(--s-dim);
+  font-size: calc(var(--fs) - 1.5px); font-weight: 700; letter-spacing: 1.3px;
+}
+body.studio .section-title::before { width: 4px; height: 4px; border-radius: 0; background: rgb(var(--acc-rgb)); box-shadow: none; }
+body.studio .section-title::after { background: none; box-shadow: none; height: 0; }
+
+/* boutons */
+body.studio .btn {
+  background: rgba(var(--btn-rgb), var(--btn-a)); background-image: none;
+  border: 1px solid var(--s-line2); border-radius: var(--rad); box-shadow: none;
+  color: var(--btn-text); font-weight: 500;
+  transition: background-color .1s, border-color .1s, color .1s;
+}
+body.studio .btn:hover { background-color: var(--s-hover); border-color: #42424a; color: #fff; box-shadow: none; }
+body.studio .btn:active { background-color: var(--s-raise); border-color: #4a4a52; }
+body.studio .btn:disabled:hover { background: rgba(var(--btn-rgb), var(--btn-a)); border-color: var(--s-line2); }
+body.studio .btn .ic { opacity: .6; color: inherit; filter: none; }
+body.studio .btn:hover .ic { opacity: 1; color: inherit; filter: none; }
+body.studio .btn.primary, body.studio .btn.toggle.on {
+  background: rgb(var(--acc-rgb)); background-image: none; border-color: rgb(var(--acc-rgb));
+  color: #0e0e10; font-weight: 600; box-shadow: none;
+}
+body.studio .btn.primary:hover, body.studio .btn.toggle.on:hover { filter: brightness(1.08); background: rgb(var(--acc-rgb)); color: #0e0e10; box-shadow: none; }
+body.studio .btn.primary .ic { opacity: .85; }
+body.studio .btn.danger, body.studio .btn.danger:hover { background: #b9443a; background-image: none; border-color: #b9443a; color: #fff; box-shadow: none; }
+body.studio .fx-trash.on { background: #b9443a; border-color: #b9443a; color: #fff; box-shadow: none; }
+body.studio .align-grid .btn { color: var(--s-dim); }
+body.studio .align-grid .btn.center { color: rgb(var(--acc-rgb)); border-color: var(--acc-line); box-shadow: none; }
+
+/* champs */
+body.studio textarea, body.studio input[type=text], body.studio input[type=number], body.studio select,
+body.studio .tt-url, body.studio .pk-hex, body.studio .search input {
+  background: #0d0d0f; border: 1px solid var(--s-line2); border-radius: var(--rad); color: var(--s-txt); box-shadow: none;
+}
+body.studio textarea:focus, body.studio input:focus, body.studio select:focus, body.studio .tt-url:focus,
+body.studio .pk-hex:focus, body.studio .search input:focus { border-color: var(--acc-line); box-shadow: none; }
+body.studio input[type=number] { font-family: Consolas, "Cascadia Mono", monospace; }
+body.studio .search-ic { color: var(--s-faint); filter: none; }
+body.studio .search input::placeholder { color: var(--s-faint); }
+body.studio .search-clear { background: transparent; color: var(--s-dim); }
+body.studio .search-clear:hover { background: var(--s-hover); color: #fff; }
+body.studio .fx-item mark { background: var(--acc-soft); color: #fff; }
+
+/* listes, vignettes, éditeur */
+body.studio .thumb, body.studio .thumb:not(.sel) { background: var(--s-raise); border: 1px solid var(--s-line); border-radius: var(--rad); box-shadow: none; }
+body.studio .thumb:hover { border-color: #42424a; box-shadow: none; }
+body.studio .thumb.sel { background: var(--acc-soft); border-color: rgb(var(--acc-rgb)); box-shadow: none; }
+body.studio .thumb.sel .name { color: #fff; }
+body.studio .editor { background: #0c0c0e; border: 1px solid var(--s-line); box-shadow: none; }
+body.studio .fx-cat-head { border-bottom-color: var(--s-line); color: var(--s-txt); }
+body.studio .fx-cat-head:hover .t { text-shadow: none; color: #fff; }
+body.studio .fx-cat-head .count, body.studio .fx-cat-head .all { font-family: Consolas, "Cascadia Mono", monospace; color: var(--s-faint); }
+body.studio .fx-item.picked, body.studio .ed-item.picked { background: rgba(185, 68, 58, .22); border-color: #b9443a; color: #fff; box-shadow: none; }
+body.studio .fx-delbar { background: rgba(185, 68, 58, .1); border-color: rgba(185, 68, 58, .5); color: #e3b3ad; }
+body.studio .ed-item.last { border-color: var(--acc-line); box-shadow: none; }
+body.studio .ed-form { background: #131316; border: 1px solid var(--s-line2); }
+body.studio .ed-plus.on { box-shadow: none; }
+body.studio .ed-lrow > label, body.studio .ed-field > label, body.studio .th-row label, body.studio .th-row .val, body.studio .th-sub { color: var(--s-dim); }
+
+/* segments et cases */
+body.studio .th-seg { border: 1px solid var(--s-line2); background: #0f0f11; }
+body.studio .th-seg button { background: transparent; color: var(--s-dim); border-right-color: var(--s-line2); }
+body.studio .th-seg button:hover { color: #fff; background: var(--s-hover); }
+body.studio .th-seg button.on { background: var(--acc-soft); color: #fff; box-shadow: inset 0 -2px 0 rgb(var(--acc-rgb)); }
+body.studio .th-check { color: #c9c9cf; }
+
+/* fenêtres flottantes */
+body.studio .picker, body.studio .theme-pop, body.studio .modal-box, body.studio .banner {
+  background: #18181b; border: 1px solid var(--s-line2); border-radius: calc(var(--rad) + 2px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .55);
+}
+body.studio .modal { background: rgba(0, 0, 0, .55); }
+body.studio .theme-pop h4 { color: var(--s-dim); font-size: calc(var(--fs) - 1.5px); letter-spacing: 1.3px; }
+body.studio .th-sw.on { border-color: #fff; box-shadow: none; }
+body.studio .pk-swatch:hover { box-shadow: none; }
+body.studio .theme-btn { color: var(--s-dim); }
+body.studio .theme-btn:hover { color: #fff; }
+
+/* réglages qui ne concernent que le style Néon : grisés en Studio */
+body.studio .neon-only { opacity: .4; pointer-events: none; }
+.th-style-note { color: #8d8d96; font-size: calc(var(--fs) - 1.5px); margin-top: -4px; }
+body.studio .th-sw { background: #151518 !important; color: #c9c9cf; text-shadow: none; border-color: var(--s-line2); padding-bottom: 4px; }
+body.studio .th-sw::before { content: ""; position: absolute; left: 6px; right: 6px; top: 6px; height: 12px; border-radius: 3px; background: var(--sw); }
+body.studio .th-sw.on { border-color: var(--sw); color: #fff; }
