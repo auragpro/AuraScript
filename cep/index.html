@@ -15,13 +15,18 @@
 
   <div id="themePop" class="theme-pop hidden">
     <h4>Thème <button class="btn small" id="thReset" title="Revenir au thème de base">Réinitialiser</button></h4>
+    <div class="th-seg th-seg2" id="thStyle">
+      <button data-m="studio" title="Sobre et net, sans glow">Studio</button><button data-m="neon" title="Lumineux, avec glow et animations">Néon</button>
+    </div>
     <div class="th-grid" id="thGrid"></div>
     <div class="th-row"><label>Couleur</label><input id="thHex" class="pk-hex" maxlength="7" spellcheck="false" placeholder="#B8B0FF"></div>
-    <div class="th-row"><label>Glow</label><input type="range" id="thGlow" min="0" max="150" step="5"><span class="val" id="thGlowV"></span></div>
+    <div class="th-row neon-only"><label>Glow</label><input type="range" id="thGlow" min="0" max="150" step="5"><span class="val" id="thGlowV"></span></div>
     <div class="th-row"><label>Arrondis</label><input type="range" id="thRad" min="0" max="14" step="1"><span class="val" id="thRadV"></span></div>
     <div class="th-row"><label>Texte</label><input type="range" id="thFs" min="10" max="13" step="0.5"><span class="val" id="thFsV"></span></div>
     <label class="th-check"><input type="checkbox" id="thCompact"> Mode compact (boutons plus petits)</label>
     <h4>Animations</h4>
+    <div class="th-style-note studio-note">Les animations de lumière sont réservées au style Néon.</div>
+    <div class="col neon-only" style="gap:9px">
     <label class="th-check"><input type="checkbox" id="thAnim"> Lumière et couleurs animées</label>
     <div class="th-sub">Lumière</div>
     <div class="th-seg th-seg3" id="thLight">
@@ -33,6 +38,7 @@
     </div>
     <div class="th-row"><label>Intensité</label><input type="range" id="thLi" min="0" max="100" step="5"><span class="val" id="thLiV"></span></div>
     <div class="th-row"><label>Vitesse</label><input type="range" id="thAnimSpd" min="1" max="5" step="1"><span class="val" id="thAnimSpdV"></span></div>
+    </div>
     <h4>Fond</h4>
     <div class="th-seg" id="thBgMode">
       <button data-m="theme">Thème</button><button data-m="color">Couleur</button><button data-m="grad">Dégradé</button><button data-m="image">Image</button>
