@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.6.0";
+    var VERSION = "3.6.1";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -110,7 +110,7 @@
             { id: "gold", name: "Or", acc: [255, 202, 96], acc2: "#fff1b8", tint: "#33270f" },
             { id: "ice", name: "Glace", acc: [228, 232, 245], acc2: "#ffffff", tint: "#24252e" }
         ];
-        var DEF = { style: "studio", id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45, btn: "dark", btnHex: "#3a2a6a", btnA: 100, anim: true, animDir: "lr", animSpd: 3, light: "edge", li: 45 };
+        var DEF = { name: "", style: "studio", id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45, btn: "dark", btnHex: "#3a2a6a", btnA: 100, anim: true, animDir: "lr", animSpd: 3, light: "edge", li: 45 };
         var BTN_SW = ["#2a2a33", "#3a2a6a", "#1f3a66", "#165a5a", "#1f5a33", "#6a3a14", "#6a1f2e", "#55204f"];
         var BG_SW = ["#000000", "#0d0d10", "#101826", "#0f1f2e", "#1a1030", "#2a1240", "#0f2418", "#2a0f14"];
         var st = {};
@@ -135,6 +135,8 @@
             r.setProperty("--rad", st.rad + "px");
             r.setProperty("--fs", st.fs + "px");
             document.body.classList.toggle("compact", !!st.compact);
+            var nm = String(st.name || "").replace(/^\s+|\s+$/g, "") || "AuraScript";
+            if ($("brandName")) { $("brandName").textContent = nm; document.title = nm; }
             var studio = st.style !== "neon";
             document.body.classList.toggle("studio", studio);
             var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
@@ -199,6 +201,7 @@
         function sync() {
             Array.prototype.forEach.call(document.querySelectorAll(".th-sw"), function (b) { b.classList.toggle("on", !st.hex && b.getAttribute("data-id") === st.id); });
             $("thHex").value = st.hex || "";
+            if (document.activeElement !== $("thName")) $("thName").value = st.name || "";
             Array.prototype.forEach.call(document.querySelectorAll("#thStyle button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === (st.style === "neon" ? "neon" : "studio")); });
             Array.prototype.forEach.call(document.querySelectorAll(".studio-note"), function (n) { n.classList.toggle("hidden", st.style === "neon"); });
             $("thGlow").value = st.glow; $("thGlowV").textContent = st.glow + "%";
@@ -236,6 +239,7 @@
                 $("thGrid").appendChild(b);
             });
             $("thHex").addEventListener("input", function () { var v = this.value.trim(); if (!v) { set("hex", ""); return; } if (hexRgb(v)) set("hex", v.charAt(0) === "#" ? v : "#" + v); });
+            $("thName").addEventListener("input", function () { set("name", this.value.slice(0, 24)); });
             Array.prototype.forEach.call(document.querySelectorAll("#thStyle button"), function (b) { b.onclick = function () { set("style", b.getAttribute("data-m")); }; });
             $("thGlow").addEventListener("input", function () { set("glow", Number(this.value)); });
             $("thRad").addEventListener("input", function () { set("rad", Number(this.value)); });
