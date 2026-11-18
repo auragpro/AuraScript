@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.5.6";
+    var VERSION = "3.6.0";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -110,7 +110,7 @@
             { id: "gold", name: "Or", acc: [255, 202, 96], acc2: "#fff1b8", tint: "#33270f" },
             { id: "ice", name: "Glace", acc: [228, 232, 245], acc2: "#ffffff", tint: "#24252e" }
         ];
-        var DEF = { id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45, btn: "dark", btnHex: "#3a2a6a", btnA: 100, anim: true, animDir: "lr", animSpd: 3, light: "edge", li: 45 };
+        var DEF = { style: "studio", id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45, btn: "dark", btnHex: "#3a2a6a", btnA: 100, anim: true, animDir: "lr", animSpd: 3, light: "edge", li: 45 };
         var BTN_SW = ["#2a2a33", "#3a2a6a", "#1f3a66", "#165a5a", "#1f5a33", "#6a3a14", "#6a1f2e", "#55204f"];
         var BG_SW = ["#000000", "#0d0d10", "#101826", "#0f1f2e", "#1a1030", "#2a1240", "#0f2418", "#2a0f14"];
         var st = {};
@@ -135,8 +135,10 @@
             r.setProperty("--rad", st.rad + "px");
             r.setProperty("--fs", st.fs + "px");
             document.body.classList.toggle("compact", !!st.compact);
+            var studio = st.style !== "neon";
+            document.body.classList.toggle("studio", studio);
             var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
-            var on = !!st.anim && !reduce;
+            var on = !!st.anim && !reduce && !studio;
             document.body.classList.toggle("anim-on", on);
             var dir = st.animDir === "diag" ? "diag" : "lr";
             ["lr", "diag", "both"].forEach(function (d) { document.body.classList.toggle("anim-" + d, on && dir === d); });
@@ -147,7 +149,7 @@
             r.setProperty("--spd", String([0, 0.5, 0.75, 1, 1.4, 2][st.animSpd] || 1));
             applyBg();
             applyBtn(t);
-            window.__glowColor = gk > 0 ? "rgba(" + t.acc.join(",") + "," + Math.min(1, 0.75 * gk) + ")" : null;
+            window.__glowColor = gk > 0 && !studio ? "rgba(" + t.acc.join(",") + "," + Math.min(1, 0.75 * gk) + ")" : null;
             try { requestAnimationFrame(function () { drawEditor(); drawThumbs(); }); } catch (e) {}
         }
         // boutons : sombres, couleur du thème ou couleur perso, avec opacité réglable
@@ -155,7 +157,7 @@
             var r = document.documentElement.style, c;
             if (st.btn === "theme") c = mix([20, 19, 26], t.acc, 0.38);
             else if (st.btn === "custom" && hexRgb(st.btnHex)) c = hexRgb(st.btnHex);
-            else c = [32, 31, 39];
+            else c = st.style !== "neon" ? [30, 30, 34] : [32, 31, 39];
             var c2 = mix(c, [0, 0, 0], 0.25);
             var lum = (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255;
             r.setProperty("--btn-rgb", c.join(", "));
@@ -197,6 +199,8 @@
         function sync() {
             Array.prototype.forEach.call(document.querySelectorAll(".th-sw"), function (b) { b.classList.toggle("on", !st.hex && b.getAttribute("data-id") === st.id); });
             $("thHex").value = st.hex || "";
+            Array.prototype.forEach.call(document.querySelectorAll("#thStyle button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === (st.style === "neon" ? "neon" : "studio")); });
+            Array.prototype.forEach.call(document.querySelectorAll(".studio-note"), function (n) { n.classList.toggle("hidden", st.style === "neon"); });
             $("thGlow").value = st.glow; $("thGlowV").textContent = st.glow + "%";
             $("thRad").value = st.rad; $("thRadV").textContent = st.rad + "px";
             $("thFs").value = st.fs; $("thFsV").textContent = st.fs + "px";
@@ -227,10 +231,12 @@
                 var b = document.createElement("button");
                 b.className = "th-sw"; b.setAttribute("data-id", t.id); b.title = t.name; b.textContent = t.name;
                 b.style.background = "linear-gradient(135deg, " + t.tint + " 0%, rgb(" + t.acc.join(",") + ") 70%, " + t.acc2 + " 100%)";
+                b.style.setProperty("--sw", "rgb(" + t.acc.join(",") + ")");
                 b.onclick = function () { st.hex = ""; set("id", t.id); };
                 $("thGrid").appendChild(b);
             });
             $("thHex").addEventListener("input", function () { var v = this.value.trim(); if (!v) { set("hex", ""); return; } if (hexRgb(v)) set("hex", v.charAt(0) === "#" ? v : "#" + v); });
+            Array.prototype.forEach.call(document.querySelectorAll("#thStyle button"), function (b) { b.onclick = function () { set("style", b.getAttribute("data-m")); }; });
             $("thGlow").addEventListener("input", function () { set("glow", Number(this.value)); });
             $("thRad").addEventListener("input", function () { set("rad", Number(this.value)); });
             $("thFs").addEventListener("input", function () { set("fs", Number(this.value)); });
