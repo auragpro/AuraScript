@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.6.1";
+    var VERSION = "3.6.2";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -135,8 +135,7 @@
             r.setProperty("--rad", st.rad + "px");
             r.setProperty("--fs", st.fs + "px");
             document.body.classList.toggle("compact", !!st.compact);
-            var nm = String(st.name || "").replace(/^\s+|\s+$/g, "") || "AuraScript";
-            if ($("brandName")) { $("brandName").textContent = nm; document.title = nm; }
+            showName();
             var studio = st.style !== "neon";
             document.body.classList.toggle("studio", studio);
             var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
@@ -227,6 +226,13 @@
             $("thBtnA").value = st.btnA; $("thBtnAV").textContent = st.btnA + "%";
             $("thBgPick").textContent = st.bgImg ? "Image : " + st.bgImg.split(/[\\\/]/).pop() : "Choisir une image...";
         }
+        // nom en haut à gauche : mis à jour seul (sans redessiner tout le thème), sauvegarde différée
+        function showName() {
+            var nm = String(st.name || "").replace(/^\s+|\s+$/g, "") || "AuraScript";
+            var el = $("brandName"); if (el && el.textContent !== nm) { el.textContent = nm; document.title = nm; }
+        }
+        var nameT = 0;
+        function setName(v) { st.name = v; showName(); clearTimeout(nameT); nameT = setTimeout(save, 400); }
         function set(k, v) { st[k] = v; save(); apply(); sync(); }
         function init() {
             load(); apply();
@@ -239,7 +245,7 @@
                 $("thGrid").appendChild(b);
             });
             $("thHex").addEventListener("input", function () { var v = this.value.trim(); if (!v) { set("hex", ""); return; } if (hexRgb(v)) set("hex", v.charAt(0) === "#" ? v : "#" + v); });
-            $("thName").addEventListener("input", function () { set("name", this.value.slice(0, 24)); });
+            $("thName").addEventListener("input", function () { setName(this.value.slice(0, 24)); });
             Array.prototype.forEach.call(document.querySelectorAll("#thStyle button"), function (b) { b.onclick = function () { set("style", b.getAttribute("data-m")); }; });
             $("thGlow").addEventListener("input", function () { set("glow", Number(this.value)); });
             $("thRad").addEventListener("input", function () { set("rad", Number(this.value)); });
