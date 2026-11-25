@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.6.3";
+    var VERSION = "3.6.4";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -344,6 +344,12 @@
         host("styledText", J(v)).then(function (r) { showResult(r); });
     };
     try { var bs = localStorage.getItem("aura.bevel"); if (bs) $("bevelSize").value = bs; } catch (e) {}
+    function fpState() { host("fastPreviewState").then(function (r) { $("btnFastPrev").classList.toggle("on", !!(r && r.data && r.data.on)); }); }
+    $("btnFastPrev").onclick = function () {
+        host("fastPreview").then(function (r) { if (r && r.data) $("btnFastPrev").classList.toggle("on", !!r.data.on); showResult(r); });
+    };
+    fpState();
+    document.querySelector('.tab[data-page="tools"]').addEventListener("click", fpState);
     $("btnBevelSel").onclick = function () {
         var v = parseFloat($("bevelSelSize").value); if (!(v >= 0)) v = 5;
         try { localStorage.setItem("aura.bevelSel", String(v)); } catch (e) {}
