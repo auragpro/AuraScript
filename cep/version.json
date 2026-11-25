@@ -1,5 +1,5 @@
 {
-  "version": "3.6.2",
+  "version": "3.6.3",
   "files": [
     "index.html",
     "css/style.css",
@@ -9,6 +9,6 @@
     "CSXS/manifest.xml"
   ],
   "notes": [
-    "Changer le nom en haut à gauche ne fait plus ramer le panneau"
+    "Performances : le panneau ne questionne plus After Effects en boucle, et les animations se mettent en pause quand tu ne l'utilises pas"
   ]
 }
