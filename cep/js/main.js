@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.6.4";
+    var VERSION = "3.6.5";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -349,6 +349,7 @@
         host("fastPreview").then(function (r) { if (r && r.data) $("btnFastPrev").classList.toggle("on", !!r.data.on); showResult(r); });
     };
     fpState();
+    $("btnPurge").onclick = function () { host("purgeRam").then(function (r) { showResult(r); }); };
     document.querySelector('.tab[data-page="tools"]').addEventListener("click", fpState);
     $("btnBevelSel").onclick = function () {
         var v = parseFloat($("bevelSelSize").value); if (!(v >= 0)) v = 5;
