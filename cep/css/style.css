@@ -641,3 +641,7 @@ body.studio .neon-only { opacity: .4; pointer-events: none; }
 body.studio .th-sw { background: #151518 !important; color: #c9c9cf; text-shadow: none; border-color: var(--s-line2); padding-bottom: 4px; }
 body.studio .th-sw::before { content: ""; position: absolute; left: 6px; right: 6px; top: 6px; height: 12px; border-radius: 3px; background: var(--sw); }
 body.studio .th-sw.on { border-color: var(--sw); color: #fff; }
+
+/* 3.6.3 : animations en pause quand le panneau n'est pas utilisé (moins de charge pour After Effects) */
+body.idle *, body.idle *::before, body.idle *::after { animation-play-state: paused !important; }
+body.idle .fx-blobs, body.idle .fx-sweep { visibility: hidden; }
