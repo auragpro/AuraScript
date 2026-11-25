@@ -645,3 +645,6 @@ body.studio .th-sw.on { border-color: var(--sw); color: #fff; }
 /* 3.6.3 : animations en pause quand le panneau n'est pas utilisé (moins de charge pour After Effects) */
 body.idle *, body.idle *::before, body.idle *::after { animation-play-state: paused !important; }
 body.idle .fx-blobs, body.idle .fx-sweep { visibility: hidden; }
+/* 3.6.5 : moins de mémoire — les grands calques d'animation ne sont créés que s'ils sont visibles */
+body.studio .fx-blobs i, body:not(.anim-on) .fx-blobs i, body.idle .fx-blobs i { display: none; will-change: auto; animation: none; }
+body.idle .fx-sweep::before, body.idle .fx-sweep::after { will-change: auto; }
