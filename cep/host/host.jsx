@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.5.6
+// version: 3.6.4
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1798,6 +1798,43 @@
                 return ok("Biseautage et estampage (taille " + size + ") sur " + done + " calque(s)." + (done < src.length ? " " + (src.length - done) + " ignor\u00e9(s)." : ""));
             });
         } catch (e) { return fail("Erreur : " + e.message); }
+    };
+
+    // ---------- Lecture fluide : all\u00e8ge la pr\u00e9visualisation de la compo active (r\u00e9versible) ----------
+    API.fastPreview = function () {
+        try {
+            var comp = needComp();
+            var key = "fp_" + comp.id, saved = null;
+            try { if (app.settings.haveSetting("AuraScript", key)) saved = app.settings.getSetting("AuraScript", key); } catch (e0) {}
+            if (saved) {
+                // retour aux r\u00e9glages d'avant
+                var o = null; try { o = eval("(" + saved + ")"); } catch (e1) {}
+                if (o) {
+                    try { comp.resolutionFactor = o.res; } catch (e2) {}
+                    try { comp.motionBlur = o.mb; } catch (e3) {}
+                    try { comp.frameBlending = o.fb; } catch (e4) {}
+                    try { comp.draft3d = o.d3; } catch (e5) {}
+                }
+                try { app.settings.saveSetting("AuraScript", key, ""); } catch (e6) {}
+                return ok("Lecture fluide d\u00e9sactiv\u00e9e : qualit\u00e9 normale remise.", { on: false });
+            }
+            var prev = { res: [comp.resolutionFactor[0], comp.resolutionFactor[1]], mb: comp.motionBlur, fb: comp.frameBlending, d3: false };
+            try { prev.d3 = comp.draft3d; } catch (e7) {}
+            app.settings.saveSetting("AuraScript", key, "{res:[" + prev.res[0] + "," + prev.res[1] + "],mb:" + prev.mb + ",fb:" + prev.fb + ",d3:" + prev.d3 + "}");
+            var f = comp.width >= 2500 ? 4 : 2;   // demi (ou quart si la compo est en 1440p/4K)
+            comp.resolutionFactor = [f, f];
+            comp.motionBlur = false;
+            comp.frameBlending = false;
+            try { comp.draft3d = true; } catch (e8) {}
+            return ok("Lecture fluide activ\u00e9e : r\u00e9solution " + (f === 2 ? "1/2" : "1/4") + ", flou de mouvement et fusion d'images coup\u00e9s pendant la preview. Reclique pour revenir en qualit\u00e9 normale (\u00e0 faire avant l'export).", { on: true });
+        } catch (e) { return fail("Erreur : " + e.message); }
+    };
+    API.fastPreviewState = function () {
+        try {
+            var comp = app.project.activeItem; if (!(comp instanceof CompItem)) return ok("", { on: false });
+            var v = ""; try { if (app.settings.haveSetting("AuraScript", "fp_" + comp.id)) v = app.settings.getSetting("AuraScript", "fp_" + comp.id); } catch (e) {}
+            return ok("", { on: !!v });
+        } catch (e) { return ok("", { on: false }); }
     };
 
     API.ping = function () { return ok("pong", { ae: app.version, os: $.os }); };
