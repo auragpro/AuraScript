@@ -1,5 +1,5 @@
 // AuraScript \u2014 logique After Effects appel\u00e9e par le panneau HTML (CEP)
-// version: 3.6.4
+// version: 3.6.5
 (function () {
     var SCRIPT_NAME = "AuraScript";
     var SETTINGS_SECTION = "AuraScript";
@@ -1835,6 +1835,16 @@
             var v = ""; try { if (app.settings.haveSetting("AuraScript", "fp_" + comp.id)) v = app.settings.getSetting("AuraScript", "fp_" + comp.id); } catch (e) {}
             return ok("", { on: !!v });
         } catch (e) { return ok("", { on: false }); }
+    };
+
+    // ---------- Vider la RAM : lib\u00e8re le cache d'images d'After Effects (comme \u00c9dition > Purger) ----------
+    API.purgeRam = function () {
+        try {
+            try { app.purge(PurgeTarget.IMAGE_CACHES); } catch (e1) {}
+            try { app.purge(PurgeTarget.SNAPSHOT_CACHES); } catch (e2) {}
+            try { $.gc(); } catch (e3) {}
+            return ok("RAM lib\u00e9r\u00e9e : cache d'images d'After Effects vid\u00e9 (l'historique Ctrl+Z est gard\u00e9).");
+        } catch (e) { return fail("Erreur : " + e.message); }
     };
 
     API.ping = function () { return ok("pong", { ae: app.version, os: $.os }); };
