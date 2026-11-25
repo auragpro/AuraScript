@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.6.2";
+    var VERSION = "3.6.3";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -789,7 +789,7 @@
             last = p.id; render();
             status("Application de « " + p.name + " »...");
             return host("edgeText", J({ name: p.name, ffx: p.ffx || "", videoKey: $("edVid").value, matteKey: $("edMat").value, precomp: $("edPrecomp").checked })).then(function (r) {
-                setTimeout(refreshLayers, 150);
+                setTimeout(function () { refreshLayers(true); }, 150);
                 if (!r.ok && /Sélectionne d'abord la vid/.test(r.msg || "")) { status("Preset prêt. " + r.msg); return r; }
                 return showResult(r);
             });
@@ -804,8 +804,12 @@
             items.forEach(function (L) { var o = document.createElement("option"); o.value = L.key; o.textContent = L.index + ". " + L.name; sel.appendChild(o); });
             sel.value = [].some.call(sel.options, function (o) { return o.value === keep; }) ? keep : "";
         }
-        function refreshLayers() {
-            if (busy) return; busy = true;
+        var lastRefresh = 0;
+        function refreshLayers(force) {
+            if (busy) return;
+            if (force !== true && Date.now() - lastRefresh < 2000) return;   // au plus une fois toutes les 2 s
+            if (document.hidden) return;
+            busy = true; lastRefresh = Date.now();
             host("edgeLayers").then(function (r) {
                 busy = false;
                 var ls = (r && r.ok && r.data && r.data.layers) || [];
@@ -884,12 +888,12 @@
 
         function init() {
             if (!fs) { $("edList").innerHTML = '<div class="fx-empty">Cette fonction a besoin de Node.js.</div>'; return; }
-            load(); render(); refreshLayers();
-            $("edRefresh").onclick = refreshLayers;
+            load(); render();
+            $("edRefresh").onclick = function () { refreshLayers(true); };
             try { $("edPrecomp").checked = localStorage.getItem("aura.edPrecomp") === "1"; } catch (e) {}
             $("edPrecomp").onchange = function () { try { localStorage.setItem("aura.edPrecomp", this.checked ? "1" : "0"); } catch (e) {} };
-            $("edLink").addEventListener("mouseenter", refreshLayers);
-            var tb = document.querySelector('.tab[data-page="intro"]'); if (tb) tb.addEventListener("click", refreshLayers);
+            // pas de rafraîchissement au survol (ça interrogeait After Effects en boucle et le faisait ramer)
+            var tb = document.querySelector('.tab[data-page="intro"]'); if (tb) tb.addEventListener("click", function () { refreshLayers(); });
             $("edAdd").onclick = function () { if (!$("edForm").classList.contains("hidden") && !editId) closeForm(); else openForm(null); };
             $("edCancel").onclick = closeForm;
             $("edSave").onclick = submit;
@@ -1643,4 +1647,17 @@
     showPage(startPage);
     showNotes();
     setTimeout(checkUpdate, 800);
+
+    // perf : quand le panneau n'est pas utilisé (souris ailleurs, AE en arrière-plan), toutes les animations sont mises en pause
+    (function () {
+        var t = 0;
+        function idle(on) { clearTimeout(t); if (on) t = setTimeout(function () { document.body.classList.add("idle"); }, 1500); else document.body.classList.remove("idle"); }
+        window.addEventListener("blur", function () { idle(true); });
+        window.addEventListener("focus", function () { idle(false); });
+        document.addEventListener("mouseleave", function () { idle(true); });
+        document.addEventListener("mouseenter", function () { idle(false); });
+        document.addEventListener("visibilitychange", function () { idle(document.hidden); });
+        document.addEventListener("mousemove", function () { if (document.body.classList.contains("idle") || t) idle(false); t = 0; }, { passive: true });
+        idle(true);
+    })();
 })();
