@@ -654,3 +654,7 @@ body.idle .fx-sweep::before, body.idle .fx-sweep::after { will-change: auto; }
 .thumb-group span { font-family: Consolas, "Cascadia Mono", monospace; font-weight: 400; letter-spacing: 0; color: #5d5d66; }
 .thumb-group::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, .07); order: 1; }
 .thumb-group span { order: 2; }
+/* 3.6.7 : MODE ÉCONOMIE — rien qui tourne en continu, rien de coûteux à dessiner */
+body.eco *, body.eco *::before, body.eco *::after { animation: none !important; transition: none !important; box-shadow: none !important; text-shadow: none !important; will-change: auto !important; }
+body.eco .fx-blobs, body.eco .fx-sweep { display: none !important; }
+body.eco { background-image: none !important; background: #121214 !important; }
