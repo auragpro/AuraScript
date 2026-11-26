@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.6.6";
+    var VERSION = "3.6.7";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -110,7 +110,7 @@
             { id: "gold", name: "Or", acc: [255, 202, 96], acc2: "#fff1b8", tint: "#33270f" },
             { id: "ice", name: "Glace", acc: [228, 232, 245], acc2: "#ffffff", tint: "#24252e" }
         ];
-        var DEF = { name: "", style: "studio", id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45, btn: "dark", btnHex: "#3a2a6a", btnA: 100, anim: true, animDir: "lr", animSpd: 3, light: "edge", li: 45 };
+        var DEF = { eco: false, name: "", style: "studio", id: "aura", hex: "", glow: 100, rad: 6, fs: 11, compact: false, bg: "theme", bg1: "#101018", bg2: "#2a1240", bgImg: "", bgDim: 45, btn: "dark", btnHex: "#3a2a6a", btnA: 100, anim: true, animDir: "lr", animSpd: 3, light: "edge", li: 45 };
         var BTN_SW = ["#2a2a33", "#3a2a6a", "#1f3a66", "#165a5a", "#1f5a33", "#6a3a14", "#6a1f2e", "#55204f"];
         var BG_SW = ["#000000", "#0d0d10", "#101826", "#0f1f2e", "#1a1030", "#2a1240", "#0f2418", "#2a0f14"];
         var st = {};
@@ -135,11 +135,14 @@
             r.setProperty("--rad", st.rad + "px");
             r.setProperty("--fs", st.fs + "px");
             document.body.classList.toggle("compact", !!st.compact);
+            var eco = !!st.eco;
+            document.body.classList.toggle("eco", eco);
+            window.__eco = eco;
             showName();
-            var studio = st.style !== "neon";
+            var studio = st.style !== "neon" || eco;   // le mode économie utilise toujours le style sobre
             document.body.classList.toggle("studio", studio);
             var reduce = false; try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
-            var on = !!st.anim && !reduce && !studio;
+            var on = !!st.anim && !reduce && !studio && !eco;
             document.body.classList.toggle("anim-on", on);
             var dir = st.animDir === "diag" ? "diag" : "lr";
             ["lr", "diag", "both"].forEach(function (d) { document.body.classList.toggle("anim-" + d, on && dir === d); });
@@ -150,7 +153,7 @@
             r.setProperty("--spd", String([0, 0.5, 0.75, 1, 1.4, 2][st.animSpd] || 1));
             applyBg();
             applyBtn(t);
-            window.__glowColor = gk > 0 && !studio ? "rgba(" + t.acc.join(",") + "," + Math.min(1, 0.75 * gk) + ")" : null;
+            window.__glowColor = gk > 0 && !studio && !eco ? "rgba(" + t.acc.join(",") + "," + Math.min(1, 0.75 * gk) + ")" : null;
             try { requestAnimationFrame(function () { drawEditor(); drawThumbs(); }); } catch (e) {}
         }
         // boutons : sombres, couleur du thème ou couleur perso, avec opacité réglable
@@ -184,6 +187,7 @@
         var plT = 0;
         function placeLights() {
             clearTimeout(plT);
+            if (!document.body.classList.contains("anim-on")) return;   // inutile sans les lumières animées (Studio / Économie)
             plT = setTimeout(function () {
                 var W = window.innerWidth || 1, H = window.innerHeight || 1;
                 Array.prototype.forEach.call(document.querySelectorAll(".btn, .tab, .card"), function (el) {
@@ -207,6 +211,7 @@
             $("thRad").value = st.rad; $("thRadV").textContent = st.rad + "px";
             $("thFs").value = st.fs; $("thFsV").textContent = st.fs + "px";
             $("thCompact").checked = !!st.compact;
+            $("thEco").checked = !!st.eco;
             Array.prototype.forEach.call(document.querySelectorAll("#thBgMode button"), function (b) { b.classList.toggle("on", b.getAttribute("data-m") === st.bg); });
             $("thBgColorBox").classList.toggle("hidden", st.bg !== "color" && st.bg !== "grad");
             $("thBg2Row").classList.toggle("hidden", st.bg !== "grad");
@@ -251,6 +256,7 @@
             $("thRad").addEventListener("input", function () { set("rad", Number(this.value)); });
             $("thFs").addEventListener("input", function () { set("fs", Number(this.value)); });
             $("thCompact").addEventListener("change", function () { set("compact", this.checked); });
+            $("thEco").addEventListener("change", function () { set("eco", this.checked); });
             Array.prototype.forEach.call(document.querySelectorAll("#thBgMode button"), function (b) {
                 b.onclick = function () {
                     var m = b.getAttribute("data-m");
@@ -900,7 +906,7 @@
             try { $("edPrecomp").checked = localStorage.getItem("aura.edPrecomp") === "1"; } catch (e) {}
             $("edPrecomp").onchange = function () { try { localStorage.setItem("aura.edPrecomp", this.checked ? "1" : "0"); } catch (e) {} };
             // pas de rafraîchissement au survol (ça interrogeait After Effects en boucle et le faisait ramer)
-            var tb = document.querySelector('.tab[data-page="intro"]'); if (tb) tb.addEventListener("click", function () { refreshLayers(); });
+            var tb = document.querySelector('.tab[data-page="intro"]'); if (tb) tb.addEventListener("click", function () { if (!window.__eco) refreshLayers(); });
             $("edAdd").onclick = function () { if (!$("edForm").classList.contains("hidden") && !editId) closeForm(); else openForm(null); };
             $("edCancel").onclick = closeForm;
             $("edSave").onclick = submit;
@@ -1081,7 +1087,7 @@
     }
 
     function fitCanvas(cv) {
-        var r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+        var r = cv.getBoundingClientRect(), dpr = window.__eco ? 1 : (window.devicePixelRatio || 1);
         var w = Math.max(10, Math.round(r.width)), h = Math.max(10, Math.round(r.height));
         if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
         var g = cv.getContext("2d");
@@ -1653,7 +1659,8 @@
     // =====================================================================
 
     Theme.init();
-    loadHost().then(function () {
+    // After Effects charge déjà host.jsx à l'ouverture du panneau : on ne le recharge que s'il manque
+    evalRaw("typeof AuraAPI").then(function (t) { return String(t) === "undefined" ? loadHost() : null; }, function () { return loadHost(); }).then(function () {
         refreshPresets();
         loadLib();
     });
