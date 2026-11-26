@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.6.7";
+    var VERSION = "3.6.8";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -1653,6 +1653,65 @@
         $("banner").classList.remove("hidden");
         $("bannerOk").onclick = function () { $("banner").classList.add("hidden"); };
     }
+
+    // =====================================================================
+    // Clé d'accès : le panneau reste verrouillé tant qu'une clé valide n'a pas été entrée
+    // (les clés ne sont jamais écrites en clair : keys.json ne contient que leur empreinte SHA-256)
+    // =====================================================================
+    var Lock = (function () {
+        function norm(k) { return String(k || "").toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^(AURA)?(.{4})(.{4})(.{4})$/, "AURA-$2-$3-$4"); }
+        function sha(k) {
+            var txt = "aurascript:" + k;
+            if (nodeRequire) { try { return Promise.resolve(nodeRequire("crypto").createHash("sha256").update(txt, "utf8").digest("hex")); } catch (e) {} }
+            return crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt)).then(function (b) {
+                return Array.prototype.map.call(new Uint8Array(b), function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
+            });
+        }
+        function localKeys() {
+            try { return JSON.parse(fs.readFileSync(path.join(extensionPath(), "keys.json"), "utf8")).keys || []; } catch (e) { return []; }
+        }
+        function check(k, remote) {
+            return sha(k).then(function (h) {
+                if (localKeys().indexOf(h) >= 0) return true;
+                if (!remote) return false;
+                return getRemote("keys.json").then(function (t) {
+                    var ks = (JSON.parse(t).keys || []);
+                    try { if (fs) fs.writeFileSync(path.join(extensionPath(), "keys.json"), t, "utf8"); } catch (e) {}
+                    return ks.indexOf(h) >= 0;
+                }).catch(function () { return false; });
+            });
+        }
+        function unlock() { document.body.classList.remove("locked"); $("lock").classList.add("hidden"); }
+        function lock(msg) {
+            document.body.classList.add("locked"); $("lock").classList.remove("hidden");
+            $("lockMsg").textContent = msg || "";
+            setTimeout(function () { try { $("lockKey").focus(); } catch (e) {} }, 50);
+        }
+        function submit() {
+            var k = norm($("lockKey").value);
+            if (!/^AURA-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(k)) { $("lockMsg").textContent = "Format attendu : AURA-XXXX-XXXX-XXXX"; return; }
+            $("lockBtn").disabled = true; $("lockMsg").textContent = "Vérification...";
+            check(k, true).then(function (good) {
+                $("lockBtn").disabled = false;
+                if (!good) { $("lockMsg").textContent = "Clé invalide."; return; }
+                try { localStorage.setItem("aura.key", k); } catch (e) {}
+                unlock(); status("Clé acceptée. Bienvenue !");
+            });
+        }
+        function init() {
+            $("lockBtn").onclick = submit;
+            $("lockKey").addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+            var k = ""; try { k = localStorage.getItem("aura.key") || ""; } catch (e) {}
+            if (!k) { lock(""); return; }
+            check(k, false).then(function (good) {
+                if (good) { unlock(); return; }
+                // clé inconnue en local : on vérifie sur GitHub (nouvelle clé ou liste pas encore à jour)
+                check(k, true).then(function (g2) { if (g2) unlock(); else { try { localStorage.removeItem("aura.key"); } catch (e) {} lock("Ta clé n'est plus valide."); } });
+            });
+        }
+        return { init: init };
+    })();
+    Lock.init();
 
     // =====================================================================
     // Démarrage
