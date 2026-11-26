@@ -1,15 +1,15 @@
 {
-  "version": "3.6.7",
+  "version": "3.6.8",
   "files": [
     "index.html",
     "css/style.css",
     "js/main.js",
     "js/lyrics-core.js",
     "host/host.jsx",
-    "CSXS/manifest.xml"
+    "CSXS/manifest.xml",
+    "keys.json"
   ],
   "notes": [
-    "Grosse optimisation anti-freeze : plus de double chargement au démarrage, calculs inutiles supprimés",
-    "Thème › Mode économie : coupe tout ce qui consomme"
+    "Accès par clé : l'extension demande une clé d'accès valide"
   ]
 }
