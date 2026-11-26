@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.6.5";
+    var VERSION = "3.6.6";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -1224,7 +1224,16 @@
     function renderThumbs() {
         var box = $("thumbs");
         box.innerHTML = "";
-        lib.forEach(function (c) {
+        // tri : d'abord les courbes à 2 clés, puis celles à 3 clés, chacune sous son titre
+        var groups = [[2, lib.filter(function (c) { return c.keys !== 3; })], [3, lib.filter(function (c) { return c.keys === 3; })]];
+        groups.forEach(function (gr) {
+            if (!gr[1].length) return;
+            var h = document.createElement("div"); h.className = "thumb-group";
+            h.textContent = gr[0] + " clés"; var n = document.createElement("span"); n.textContent = gr[1].length; h.appendChild(n);
+            box.appendChild(h);
+            gr[1].forEach(addThumb);
+        });
+        function addThumb(c) {
             var d = document.createElement("div");
             d.className = "thumb" + (cur.id && c.id === cur.id ? " sel" : "");
             d.title = c.name + (c.keys === 3 ? " (3 clés)" : "") + (c.lib && c.lib !== MY_LIB ? " · " + c.lib : "");
@@ -1238,7 +1247,7 @@
             });
             d._curve = c;
             box.appendChild(d);
-        });
+        }
         requestAnimationFrame(drawThumbs);
         $("libCount").textContent = lib.length + " courbe(s)";
     }
