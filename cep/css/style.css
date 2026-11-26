@@ -648,3 +648,9 @@ body.idle .fx-blobs, body.idle .fx-sweep { visibility: hidden; }
 /* 3.6.5 : moins de mémoire — les grands calques d'animation ne sont créés que s'ils sont visibles */
 body.studio .fx-blobs i, body:not(.anim-on) .fx-blobs i, body.idle .fx-blobs i { display: none; will-change: auto; animation: none; }
 body.idle .fx-sweep::before, body.idle .fx-sweep::after { will-change: auto; }
+/* 3.6.6 : titres des groupes de courbes (2 clés / 3 clés) */
+.thumb-group { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 4px 2px 1px; font-size: calc(var(--fs) - 1.5px); font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: #8d8d96; }
+.thumb-group:not(:first-child) { margin-top: 4px; }
+.thumb-group span { font-family: Consolas, "Cascadia Mono", monospace; font-weight: 400; letter-spacing: 0; color: #5d5d66; }
+.thumb-group::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, .07); order: 1; }
+.thumb-group span { order: 2; }
