@@ -667,3 +667,5 @@ body.locked > *:not(.lock) { visibility: hidden; }
 .lock-sub { color: #8d8d96; font-size: calc(var(--fs) - .5px); }
 .lock-box input { width: 100%; box-sizing: border-box; text-align: center; letter-spacing: 1px; font-family: Consolas, "Cascadia Mono", monospace; text-transform: uppercase; user-select: text; }
 .lock-msg { min-height: 14px; color: #e3b3ad; font-size: calc(var(--fs) - 1px); text-align: center; }
+.lock-pc { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: #8d8d96; font-size: calc(var(--fs) - 1px); }
+.lock-pc b { color: #e6e6ea; font-family: Consolas, "Cascadia Mono", monospace; letter-spacing: .5px; user-select: text; }
