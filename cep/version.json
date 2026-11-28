@@ -1,5 +1,5 @@
 {
-  "version": "3.6.8",
+  "version": "3.6.9",
   "files": [
     "index.html",
     "css/style.css",
@@ -10,6 +10,6 @@
     "keys.json"
   ],
   "notes": [
-    "Accès par clé : l'extension demande une clé d'accès valide"
+    "Clés d'accès : chaque clé ne marche plus que sur un seul PC (code PC affiché sur l'écran de clé)"
   ]
 }
