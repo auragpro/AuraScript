@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.6.9";
+    var VERSION = "3.7.0";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -1660,36 +1660,21 @@
     // donc une clé donnée à quelqu'un d'autre ne marche pas sur son ordinateur.
     // =====================================================================
     var Lock = (function () {
+        // registre en ligne des clés (Google Apps Script) : une clé s'active sur le 1er PC qui l'entre, puis refuse les autres
+        var LIC_URL = "https://script.google.com/macros/s/AKfycbwMWALMntIEasC5AYYsxz_K8YLWGGSRvQ4DJujTIch1H9q0dFEgQKZODJGfopWxIDY-kA/exec";
         function norm(k) { return String(k || "").toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^(AURA)?(.{4})(.{4})(.{4})$/, "AURA-$2-$3-$4"); }
-        // code PC : identifiant stable de cet ordinateur (nom du PC + compte Windows)
+        // identifiant interne de cet ordinateur (pas besoin de le montrer à l'utilisateur)
         function pcId() {
             var src = "?";
             try { var o = nodeRequire("os"); src = String(o.hostname()).toLowerCase() + "|" + String(o.userInfo().username).toLowerCase() + "|" + process.platform; } catch (e) {}
-            var hx = "";
-            try { hx = nodeRequire("crypto").createHash("sha256").update("aurapc:" + src, "utf8").digest("hex").toUpperCase(); } catch (e2) { hx = "00000000"; }
-            return "PC-" + hx.slice(0, 4) + "-" + hx.slice(4, 8);
+            try { return nodeRequire("crypto").createHash("sha256").update("aurapc:" + src, "utf8").digest("hex").slice(0, 16); } catch (e2) { return src; }
         }
         var PC = pcId();
-        function sha(k) {
-            var txt = "aurascript:" + k + "|" + PC;
-            if (nodeRequire) { try { return Promise.resolve(nodeRequire("crypto").createHash("sha256").update(txt, "utf8").digest("hex")); } catch (e) {} }
-            return crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt)).then(function (b) {
-                return Array.prototype.map.call(new Uint8Array(b), function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
-            });
-        }
-        function localKeys() {
-            try { return JSON.parse(fs.readFileSync(path.join(extensionPath(), "keys.json"), "utf8")).keys || []; } catch (e) { return []; }
-        }
-        function check(k, remote) {
-            return sha(k).then(function (h) {
-                if (localKeys().indexOf(h) >= 0) return true;
-                if (!remote) return false;
-                return getRemote("keys.json").then(function (t) {
-                    var ks = (JSON.parse(t).keys || []);
-                    try { if (fs) fs.writeFileSync(path.join(extensionPath(), "keys.json"), t, "utf8"); } catch (e) {}
-                    return ks.indexOf(h) >= 0;
-                }).catch(function () { return false; });
-            });
+        // demande au registre : { ok: true } ou { ok: false, msg }. En cas de souci réseau : { net: true }
+        function ask(k) {
+            var url = LIC_URL + "?key=" + encodeURIComponent(k) + "&pc=" + encodeURIComponent(PC) + "&t=" + Date.now();
+            var p = nodeRequire ? nodeGet(url) : fetch(url, { cache: "no-store" }).then(function (r) { return r.text(); });
+            return p.then(function (t) { try { return JSON.parse(t); } catch (e) { return { net: true }; } }, function () { return { net: true }; });
         }
         function unlock() { document.body.classList.remove("locked"); $("lock").classList.add("hidden"); }
         function lock(msg) {
@@ -1697,33 +1682,28 @@
             $("lockMsg").textContent = msg || "";
             setTimeout(function () { try { $("lockKey").focus(); } catch (e) {} }, 50);
         }
+        function forget() { try { localStorage.removeItem("aura.key"); localStorage.removeItem("aura.keyok"); } catch (e) {} }
         function submit() {
             var k = norm($("lockKey").value);
             if (!/^AURA-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(k)) { $("lockMsg").textContent = "Format attendu : AURA-XXXX-XXXX-XXXX"; return; }
             $("lockBtn").disabled = true; $("lockMsg").textContent = "Vérification...";
-            check(k, true).then(function (good) {
+            ask(k).then(function (r) {
                 $("lockBtn").disabled = false;
-                if (!good) { $("lockMsg").textContent = "Clé invalide pour ce PC."; return; }
-                try { localStorage.setItem("aura.key", k); } catch (e) {}
-                unlock(); status("Clé acceptée. Bienvenue !");
+                if (r.net) { $("lockMsg").textContent = "Impossible de vérifier la clé : vérifie ta connexion internet."; return; }
+                if (!r.ok) { $("lockMsg").textContent = /utilis/i.test(r.msg || "") ? "Cette clé a déjà été utilisée." : "Clé invalide."; return; }
+                try { localStorage.setItem("aura.key", k); localStorage.setItem("aura.keyok", "1"); } catch (e) {}
+                unlock(); status("Clé activée. Bienvenue !");
             });
         }
         function init() {
-            $("lockPc").textContent = PC;
-            $("lockCopy").onclick = function () {
-                var ta = document.createElement("textarea"); ta.value = PC; document.body.appendChild(ta); ta.select();
-                try { document.execCommand("copy"); $("lockMsg").textContent = "Code PC copié."; } catch (e) {}
-                document.body.removeChild(ta);
-            };
             $("lockBtn").onclick = submit;
             $("lockKey").addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
-            var k = ""; try { k = localStorage.getItem("aura.key") || ""; } catch (e) {}
-            if (!k) { lock(""); return; }
-            check(k, false).then(function (good) {
-                if (good) { unlock(); return; }
-                // clé inconnue en local : on vérifie sur GitHub (nouvelle clé ou liste pas encore à jour)
-                check(k, true).then(function (g2) { if (g2) unlock(); else { try { localStorage.removeItem("aura.key"); } catch (e) {} lock("Ta clé n'est plus valide."); } });
-            });
+            var k = "", okd = false;
+            try { k = localStorage.getItem("aura.key") || ""; okd = localStorage.getItem("aura.keyok") === "1"; } catch (e) {}
+            if (!k || !okd) { forget(); lock(""); return; }
+            unlock();   // clé déjà activée sur ce PC : accès direct, même hors ligne
+            // vérification discrète en arrière-plan (clé supprimée du registre = accès retiré)
+            setTimeout(function () { ask(k).then(function (r) { if (!r.net && !r.ok) { forget(); lock("Ta clé n'est plus valide."); } }); }, 4000);
         }
         return { init: init };
     })();
