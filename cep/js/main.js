@@ -2,7 +2,7 @@
 (function () {
     "use strict";
 
-    var VERSION = "3.6.8";
+    var VERSION = "3.6.9";
     var cep = window.__adobe_cep__;
     var nodeRequire = (window.cep_node && window.cep_node.require) || (typeof require === "function" ? require : null);
     var fs = null, path = null, os = null, cp = null;
@@ -1655,13 +1655,23 @@
     }
 
     // =====================================================================
-    // Clé d'accès : le panneau reste verrouillé tant qu'une clé valide n'a pas été entrée
-    // (les clés ne sont jamais écrites en clair : keys.json ne contient que leur empreinte SHA-256)
+    // Clé d'accès : le panneau reste verrouillé tant qu'une clé valide n'a pas été entrée.
+    // Chaque clé est liée à UN seul PC : keys.json contient l'empreinte SHA-256 de « clé + code PC »,
+    // donc une clé donnée à quelqu'un d'autre ne marche pas sur son ordinateur.
     // =====================================================================
     var Lock = (function () {
         function norm(k) { return String(k || "").toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^(AURA)?(.{4})(.{4})(.{4})$/, "AURA-$2-$3-$4"); }
+        // code PC : identifiant stable de cet ordinateur (nom du PC + compte Windows)
+        function pcId() {
+            var src = "?";
+            try { var o = nodeRequire("os"); src = String(o.hostname()).toLowerCase() + "|" + String(o.userInfo().username).toLowerCase() + "|" + process.platform; } catch (e) {}
+            var hx = "";
+            try { hx = nodeRequire("crypto").createHash("sha256").update("aurapc:" + src, "utf8").digest("hex").toUpperCase(); } catch (e2) { hx = "00000000"; }
+            return "PC-" + hx.slice(0, 4) + "-" + hx.slice(4, 8);
+        }
+        var PC = pcId();
         function sha(k) {
-            var txt = "aurascript:" + k;
+            var txt = "aurascript:" + k + "|" + PC;
             if (nodeRequire) { try { return Promise.resolve(nodeRequire("crypto").createHash("sha256").update(txt, "utf8").digest("hex")); } catch (e) {} }
             return crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt)).then(function (b) {
                 return Array.prototype.map.call(new Uint8Array(b), function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
@@ -1693,12 +1703,18 @@
             $("lockBtn").disabled = true; $("lockMsg").textContent = "Vérification...";
             check(k, true).then(function (good) {
                 $("lockBtn").disabled = false;
-                if (!good) { $("lockMsg").textContent = "Clé invalide."; return; }
+                if (!good) { $("lockMsg").textContent = "Clé invalide pour ce PC."; return; }
                 try { localStorage.setItem("aura.key", k); } catch (e) {}
                 unlock(); status("Clé acceptée. Bienvenue !");
             });
         }
         function init() {
+            $("lockPc").textContent = PC;
+            $("lockCopy").onclick = function () {
+                var ta = document.createElement("textarea"); ta.value = PC; document.body.appendChild(ta); ta.select();
+                try { document.execCommand("copy"); $("lockMsg").textContent = "Code PC copié."; } catch (e) {}
+                document.body.removeChild(ta);
+            };
             $("lockBtn").onclick = submit;
             $("lockKey").addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
             var k = ""; try { k = localStorage.getItem("aura.key") || ""; } catch (e) {}
